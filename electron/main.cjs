@@ -1,298 +1,184 @@
 const { app, BrowserWindow, ipcMain, desktopCapturer } = require('electron');
 const path = require('path');
+const { WebSocketServer } = require('ws');
 const { exec } = require('child_process');
-const WebSocket = require('ws');
 const express = require('express');
-const http = require('http');
 
 let mainWindow;
-let wss; // Host WebSocket Server instance
-let guestWs; // Guest WebSocket Client instance
-const connectedClients = new Map(); // For Host: map socketId -> ws
+let wsServer;
+let webServer;
+let wsClientForGuest;
 
-// --- WEB SERVER FOR MOBILE/WEB VIEWERS ---
-const expressApp = express();
-const httpServer = http.createServer(expressApp);
-const WEB_PORT = 8080;
-
-function startWebServer() {
-  // Serve static files from the 'dist' directory
-  const distPath = path.join(__dirname, '../dist');
-  expressApp.use(express.static(distPath));
-
-  // Fallback to index.html for SPA routing
-  expressApp.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
-
-  httpServer.listen(WEB_PORT, '0.0.0.0', () => {
-    console.log(`Web Server running at http://0.0.0.0:${WEB_PORT}`);
-  });
-  
-  httpServer.on('error', (e) => {
-      console.error("Web Server Error:", e);
-  });
-}
-
-function stopWebServer() {
-    if (httpServer.listening) {
-        httpServer.close(() => {
-            console.log('Web Server stopped');
-        });
-    }
-}
-
+// --- Main Window Creation ---
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    fullscreen: false, // CHANGED: Set to false for windowed mode
-    show: false,       // CHANGED: Start hidden to prevent visual resizing glitches
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
-      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      sandbox: false, 
-      webSecurity: false 
+      nodeIntegration: false,
     },
-    autoHideMenuBar: true,
-    backgroundColor: '#000000',
-    title: "SheiyuWatch"
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 15, y: 15 },
+    minWidth: 800,
+    minHeight: 600,
+    icon: path.join(__dirname, '../assets/icon.png')
   });
 
-  // CHANGED: Maximize the window to fit the device screen perfectly, then show it
-  mainWindow.maximize();
-  mainWindow.show();
-
-  const isDev = process.env.npm_lifecycle_event === 'electron:dev';
+  const startURL = process.env.VITE_DEV_SERVER_URL || `file://${path.join(__dirname, '../dist/index.html')}`;
+  mainWindow.loadURL(startURL);
   
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-  }
+  // mainWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(() => {
   createWindow();
-
-  app.on('activate', function () {
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') app.quit();
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 // --- IPC Handlers ---
 
-// Toggle Web Server
-ipcMain.on('toggle-web-server', (event, enable) => {
-    if (enable) {
-        if (!httpServer.listening) {
-            startWebServer();
-        }
-    } else {
-        stopWebServer();
-    }
-});
-
-// 1. Get Tailscale Status
-ipcMain.handle('get-tailscale-status', async () => {
+// Get Tailscale Status
+ipcMain.handle('get-tailscale-status', () => {
   return new Promise((resolve, reject) => {
-    const isMac = process.platform === 'darwin';
-    
-    const possiblePaths = isMac ? [
-      '/Applications/Tailscale.app/Contents/MacOS/Tailscale', 
-      '/usr/local/bin/tailscale', 
-      '/opt/homebrew/bin/tailscale', 
-      'tailscale' 
-    ] : [
-      'tailscale', 
-      'C:\\Program Files\\Tailscale\\tailscale.exe' 
-    ];
-
-    const tryPath = (index) => {
-      if (index >= possiblePaths.length) {
-        console.warn("Tailscale binary not found in any known location.");
-        resolve({}); 
-        return;
+    // Mac requires a specific path if installed from App Store
+    const command = process.platform === 'darwin' ? '/Applications/Tailscale.app/Contents/MacOS/Tailscale status --json' : 'tailscale status --json';
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Tailscale exec error: ${error}`);
+        return reject(stderr);
       }
-
-      const pathStr = possiblePaths[index];
-      const cmd = pathStr.includes(' ') ? `"${pathStr}"` : pathStr;
-      
-      exec(`${cmd} status --json`, (error, stdout, stderr) => {
-        if (!error && stdout) {
-          try {
-            const status = JSON.parse(stdout);
-            resolve(status);
-            return; 
-          } catch (e) { }
-        }
-        tryPath(index + 1);
-      });
-    };
-
-    tryPath(0);
+      try {
+        resolve(JSON.parse(stdout));
+      } catch (e) {
+        reject('Failed to parse Tailscale status JSON');
+      }
+    });
   });
 });
 
-// 2. Get Desktop Sources
+// Get Desktop Sources
 ipcMain.handle('get-desktop-sources', async () => {
-  try {
-    const sources = await desktopCapturer.getSources({ 
-      types: ['window', 'screen'],
-      thumbnailSize: { width: 1920, height: 1080 }
-    });
-    return sources.map(source => ({
-      id: source.id,
-      name: source.name,
-      thumbnail: source.thumbnail.toDataURL()
-    }));
-  } catch (error) {
-    console.error("Error getting desktop sources:", error);
-    return [];
-  }
+  const sources = await desktopCapturer.getSources({ types: ['window', 'screen'] });
+  return sources.map(source => ({
+    id: source.id,
+    name: source.name,
+    thumbnail: source.thumbnail.toDataURL(),
+  }));
 });
 
-// --- HOST LOGIC ---
-
-ipcMain.on('start-host-server', (event, port) => {
-  try {
-    if (wss) {
-      wss.close();
-      connectedClients.clear();
+// --- Web Server for Browser Viewers ---
+ipcMain.on('toggle-web-server', (event, enable) => {
+    if (enable && !webServer) {
+        const expressApp = express();
+        expressApp.use(express.static(path.join(__dirname, '../dist')));
+        webServer = expressApp.listen(8080, '0.0.0.0', () => {
+            console.log('Web server for viewers started on port 8080');
+        });
+    } else if (!enable && webServer) {
+        webServer.close();
+        webServer = null;
+        console.log('Web server stopped.');
     }
+});
 
-    wss = new WebSocket.Server({ port: port || 65432 });
 
-    wss.on('listening', () => {
-      console.log(`Host signaling server started on port ${port || 65432}`);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('host-server-started', { success: true, port: port || 65432 });
-      }
-    });
-
-    wss.on('connection', (ws) => {
-      const socketId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-      connectedClients.set(socketId, ws);
-
-      console.log(`Client connected: ${socketId}`);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('host-client-connected', { socketId });
-      }
-
-      ws.on('message', (message) => {
-        try {
-          const parsed = JSON.parse(message);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('host-signal-received', { socketId, data: parsed });
-          }
-        } catch (e) {
-          console.error("Error parsing message from client", e);
-        }
-      });
-
-      ws.on('close', () => {
-        connectedClients.delete(socketId);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('host-client-disconnected', { socketId });
-        }
-      });
-
-      ws.on('error', (err) => {
-        console.error(`Socket error ${socketId}:`, err);
-      });
-    });
-
-    wss.on('error', (error) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('host-server-started', { success: false, error: error.message });
-      }
-    });
-
-  } catch (error) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('host-server-started', { success: false, error: error.message });
-    }
+// --- Host Signaling Server ---
+ipcMain.on('start-host-server', (event, port = 65432) => {
+  if (wsServer) {
+    wsServer.close();
   }
+  wsServer = new WebSocketServer({ port });
+  
+  wsServer.on('listening', () => {
+    mainWindow.webContents.send('host-server-started', { success: true, port });
+  });
+
+  wsServer.on('connection', (ws, req) => {
+    const socketId = `ws-${Date.now()}-${Math.random()}`;
+    ws.id = socketId;
+
+    mainWindow.webContents.send('host-client-connected', { socketId });
+
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        mainWindow.webContents.send('host-signal-received', { socketId, data });
+      } catch(e) { /* ignore parse error */ }
+    });
+
+    ws.on('close', () => {
+      mainWindow.webContents.send('host-client-disconnected', { socketId });
+    });
+    
+    ws.on('error', (err) => {
+        console.error(`WebSocket error for ${socketId}:`, err);
+    });
+  });
+
+  wsServer.on('error', (err) => {
+    mainWindow.webContents.send('host-server-started', { success: false, error: err.message });
+  });
 });
 
 ipcMain.on('stop-host-server', () => {
-    if (wss) {
-        console.log("Stopping Host Server...");
-        // Close all client connections
-        connectedClients.forEach((ws) => ws.terminate());
-        connectedClients.clear();
-        // Close the server
-        wss.close(() => {
-            console.log("Host Server stopped.");
-        });
-        wss = null;
-    }
-});
-
-ipcMain.on('host-send-signal', (event, { socketId, data }) => {
-  const ws = connectedClients.get(socketId);
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(data));
+  if (wsServer) {
+    wsServer.close(() => {
+        console.log('Host WebSocket server stopped.');
+    });
+    wsServer = null;
   }
 });
 
-// --- GUEST LOGIC ---
-
-ipcMain.on('connect-to-host', (event, ip, port) => {
-  if (guestWs) {
-    guestWs.terminate();
+ipcMain.on('host-send-signal', (event, socketId, data) => {
+  if (wsServer) {
+    wsServer.clients.forEach((client) => {
+      if (client.id === socketId && client.readyState === client.OPEN) {
+        client.send(JSON.stringify(data));
+      }
+    });
   }
+});
 
-  const url = `ws://${ip}:${port || 65432}`;
-  console.log(`Connecting to ${url}...`);
-
-  try {
-    guestWs = new WebSocket(url);
-
-    guestWs.on('open', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('guest-connected');
-      }
-    });
-
-    guestWs.on('message', (data) => {
-      try {
-        const parsed = JSON.parse(data);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('guest-signal-received', parsed);
-        }
-      } catch (e) {
-        console.error("Guest parse error", e);
-      }
-    });
-
-    guestWs.on('error', (err) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('guest-error', err.message);
-      }
-    });
-
-    guestWs.on('close', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('guest-disconnected');
-      }
-    });
-
-  } catch (error) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('guest-error', error.message);
+// --- Guest Connection Logic ---
+ipcMain.on('connect-to-host', (event, ip, port = 65432) => {
+    if(wsClientForGuest) {
+        wsClientForGuest.close();
     }
-  }
+    
+    wsClientForGuest = new (require('ws'))(`ws://${ip}:${port}`);
+    
+    wsClientForGuest.on('open', () => {
+        mainWindow.webContents.send('guest-connected');
+    });
+    
+    wsClientForGuest.on('message', (message) => {
+        try {
+            const data = JSON.parse(message.toString());
+            mainWindow.webContents.send('guest-signal-received', data);
+        } catch(e) { /* ignore */ }
+    });
+    
+    wsClientForGuest.on('error', (err) => {
+        mainWindow.webContents.send('guest-error', err.message);
+    });
+    
+    wsClientForGuest.on('close', () => {
+        mainWindow.webContents.send('guest-disconnected');
+    });
 });
 
 ipcMain.on('guest-send-signal', (event, data) => {
-  if (guestWs && guestWs.readyState === WebSocket.OPEN) {
-    guestWs.send(JSON.stringify(data));
-  }
+    if (wsClientForGuest && wsClientForGuest.readyState === wsClientForGuest.OPEN) {
+        wsClientForGuest.send(JSON.stringify(data));
+    }
 });
