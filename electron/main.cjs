@@ -5,14 +5,6 @@ const WebSocket = require('ws');
 const express = require('express');
 const http = require('http');
 
-// --- CRITICAL FIX 1: DISABLE WINDOWS "SLEEP" LOGIC ---
-// These flags must be set BEFORE the app is ready.
-// They tell the OS: "Never consider windows 'occluded' (covered), and never stop the renderer."
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-backgrounding-occluded-windows', 'true');
-// -----------------------------------------------------
-
 let mainWindow;
 let wss; // Host WebSocket Server instance
 let guestWs; // Guest WebSocket Client instance
@@ -25,8 +17,6 @@ const WEB_PORT = 8080;
 
 function startWebServer() {
   // Serve static files from the 'dist' directory
-  // Note: Check if '../dist' is correct for your folder structure. 
-  // If main.cjs is in the root folder, change this to just 'dist'.
   const distPath = path.join(__dirname, '../dist');
   expressApp.use(express.static(distPath));
 
@@ -56,36 +46,22 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    fullscreen: false, // Start windowed (we maximize below)
-    show: false,       // Start hidden to avoid visual glitches
-    
-    // --- CRITICAL FIX 2: THE OPACITY TRICK ---
-    // Setting opacity to 0.99 forces Windows DWM to render the Chrome window behind this one.
-    // If set to 1.0 (default), Windows optimizes the background window by freezing it.
-    opacity: 0.99, 
-    // -----------------------------------------
-
+    fullscreen: false,
+    show: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
+      preload: path.join(__dirname, 'preload.cjs'), // Corrected to .cjs
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, 
       webSecurity: false,
-      
-      // --- CRITICAL FIX 3: DISABLE THROTTLING ---
-      // Prevents Electron from deprioritizing the stream processing when backgrounded
       backgroundThrottling: false
-      // ------------------------------------------
     },
     autoHideMenuBar: true,
     backgroundColor: '#000000',
     title: "SheiyuWatch"
   });
 
-  // Maximize the window to fill the screen (Work Area)
   mainWindow.maximize();
-  
-  // Show it now that it is setup
   mainWindow.show();
 
   const isDev = process.env.npm_lifecycle_event === 'electron:dev';
@@ -259,6 +235,8 @@ ipcMain.on('stop-host-server', () => {
     }
 });
 
+// This is the handler for signals coming FROM the host's UI
+// The data object received here must be correct
 ipcMain.on('host-send-signal', (event, { socketId, data }) => {
   const ws = connectedClients.get(socketId);
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -320,3 +298,5 @@ ipcMain.on('guest-send-signal', (event, data) => {
     guestWs.send(JSON.stringify(data));
   }
 });
+
+

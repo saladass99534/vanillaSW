@@ -48,20 +48,16 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*",
-      "build/**/*"
+      "electron/**/*"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "build/icon.svg"
+      "target": "nsis"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "build/icon.svg"
+      "target": "dmg"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "build/icon.svg"
+      "target": "AppImage"
     }
   }
 }
