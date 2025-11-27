@@ -6,25 +6,31 @@ const express = require('express');
 const http = require('http');
 
 // --- CRITICAL FIX 1: DISABLE WINDOWS "SLEEP" LOGIC ---
+// These flags must be set BEFORE the app is ready.
+// They tell the OS: "Never consider windows 'occluded' (covered), and never stop the renderer."
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows', 'true');
 // -----------------------------------------------------
 
 let mainWindow;
-let wss; 
-let guestWs; 
-const connectedClients = new Map(); 
+let wss; // Host WebSocket Server instance
+let guestWs; // Guest WebSocket Client instance
+const connectedClients = new Map(); // For Host: map socketId -> ws
 
-// --- WEB SERVER ---
+// --- WEB SERVER FOR MOBILE/WEB VIEWERS ---
 const expressApp = express();
 const httpServer = http.createServer(expressApp);
 const WEB_PORT = 8080;
 
 function startWebServer() {
+  // Serve static files from the 'dist' directory
+  // Note: Check if '../dist' is correct for your folder structure. 
+  // If main.cjs is in the root folder, change this to just 'dist'.
   const distPath = path.join(__dirname, '../dist');
   expressApp.use(express.static(distPath));
 
+  // Fallback to index.html for SPA routing
   expressApp.get('*', (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
@@ -50,18 +56,14 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    fullscreen: false, 
-    show: false,       
+    fullscreen: false, // Start windowed (we maximize below)
+    show: false,       // Start hidden to avoid visual glitches
     
-    // --- CRITICAL FIX 2: THE LAYERED STRATEGY ---
-    // Instead of fading the whole app (opacity: 0.99), we use 'transparent: true'.
-    // This forces Windows DWM to render content behind this window.
-    transparent: true, 
-    
-    // Set startup color to fully transparent (#00000000) so there is no white flash.
-    // We will make it Solid Black via CSS in index.html.
-    backgroundColor: '#00000000', 
-    // --------------------------------------------
+    // --- CRITICAL FIX 2: THE OPACITY TRICK ---
+    // Setting opacity to 0.99 forces Windows DWM to render the Chrome window behind this one.
+    // If set to 1.0 (default), Windows optimizes the background window by freezing it.
+    opacity: 0.99, 
+    // -----------------------------------------
 
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -71,13 +73,19 @@ function createWindow() {
       webSecurity: false,
       
       // --- CRITICAL FIX 3: DISABLE THROTTLING ---
+      // Prevents Electron from deprioritizing the stream processing when backgrounded
       backgroundThrottling: false
+      // ------------------------------------------
     },
     autoHideMenuBar: true,
+    backgroundColor: '#000000',
     title: "SheiyuWatch"
   });
 
+  // Maximize the window to fill the screen (Work Area)
   mainWindow.maximize();
+  
+  // Show it now that it is setup
   mainWindow.show();
 
   const isDev = process.env.npm_lifecycle_event === 'electron:dev';
@@ -104,17 +112,22 @@ app.on('window-all-closed', function () {
 
 // --- IPC Handlers ---
 
+// Toggle Web Server
 ipcMain.on('toggle-web-server', (event, enable) => {
     if (enable) {
-        if (!httpServer.listening) startWebServer();
+        if (!httpServer.listening) {
+            startWebServer();
+        }
     } else {
         stopWebServer();
     }
 });
 
+// 1. Get Tailscale Status
 ipcMain.handle('get-tailscale-status', async () => {
   return new Promise((resolve, reject) => {
     const isMac = process.platform === 'darwin';
+    
     const possiblePaths = isMac ? [
       '/Applications/Tailscale.app/Contents/MacOS/Tailscale', 
       '/usr/local/bin/tailscale', 
@@ -131,6 +144,7 @@ ipcMain.handle('get-tailscale-status', async () => {
         resolve({}); 
         return;
       }
+
       const pathStr = possiblePaths[index];
       const cmd = pathStr.includes(' ') ? `"${pathStr}"` : pathStr;
       
@@ -145,10 +159,12 @@ ipcMain.handle('get-tailscale-status', async () => {
         tryPath(index + 1);
       });
     };
+
     tryPath(0);
   });
 });
 
+// 2. Get Desktop Sources
 ipcMain.handle('get-desktop-sources', async () => {
   try {
     const sources = await desktopCapturer.getSources({ 
@@ -174,9 +190,11 @@ ipcMain.on('start-host-server', (event, port) => {
       wss.close();
       connectedClients.clear();
     }
+
     wss = new WebSocket.Server({ port: port || 65432 });
 
     wss.on('listening', () => {
+      console.log(`Host signaling server started on port ${port || 65432}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('host-server-started', { success: true, port: port || 65432 });
       }
@@ -185,6 +203,8 @@ ipcMain.on('start-host-server', (event, port) => {
     wss.on('connection', (ws) => {
       const socketId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
       connectedClients.set(socketId, ws);
+
+      console.log(`Client connected: ${socketId}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('host-client-connected', { socketId });
       }
@@ -195,7 +215,9 @@ ipcMain.on('start-host-server', (event, port) => {
           if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('host-signal-received', { socketId, data: parsed });
           }
-        } catch (e) { console.error("Error parsing message", e); }
+        } catch (e) {
+          console.error("Error parsing message from client", e);
+        }
       });
 
       ws.on('close', () => {
@@ -203,6 +225,10 @@ ipcMain.on('start-host-server', (event, port) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('host-client-disconnected', { socketId });
         }
+      });
+
+      ws.on('error', (err) => {
+        console.error(`Socket error ${socketId}:`, err);
       });
     });
 
@@ -221,9 +247,14 @@ ipcMain.on('start-host-server', (event, port) => {
 
 ipcMain.on('stop-host-server', () => {
     if (wss) {
+        console.log("Stopping Host Server...");
+        // Close all client connections
         connectedClients.forEach((ws) => ws.terminate());
         connectedClients.clear();
-        wss.close();
+        // Close the server
+        wss.close(() => {
+            console.log("Host Server stopped.");
+        });
         wss = null;
     }
 });
@@ -238,28 +269,49 @@ ipcMain.on('host-send-signal', (event, { socketId, data }) => {
 // --- GUEST LOGIC ---
 
 ipcMain.on('connect-to-host', (event, ip, port) => {
-  if (guestWs) guestWs.terminate();
+  if (guestWs) {
+    guestWs.terminate();
+  }
+
   const url = `ws://${ip}:${port || 65432}`;
+  console.log(`Connecting to ${url}...`);
 
   try {
     guestWs = new WebSocket(url);
+
     guestWs.on('open', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-connected');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('guest-connected');
+      }
     });
+
     guestWs.on('message', (data) => {
       try {
         const parsed = JSON.parse(data);
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-signal-received', parsed);
-      } catch (e) { }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('guest-signal-received', parsed);
+        }
+      } catch (e) {
+        console.error("Guest parse error", e);
+      }
     });
+
     guestWs.on('error', (err) => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-error', err.message);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('guest-error', err.message);
+      }
     });
+
     guestWs.on('close', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-disconnected');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('guest-disconnected');
+      }
     });
+
   } catch (error) {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-error', error.message);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('guest-error', error.message);
+    }
   }
 });
 
