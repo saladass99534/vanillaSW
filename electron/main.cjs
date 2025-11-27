@@ -46,7 +46,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    fullscreen: true,
+    fullscreen: false, // CHANGED: Set to false for windowed mode
+    show: false,       // CHANGED: Start hidden to prevent visual resizing glitches
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -58,6 +59,10 @@ function createWindow() {
     backgroundColor: '#000000',
     title: "SheiyuWatch"
   });
+
+  // CHANGED: Maximize the window to fit the device screen perfectly, then show it
+  mainWindow.maximize();
+  mainWindow.show();
 
   const isDev = process.env.npm_lifecycle_event === 'electron:dev';
   
