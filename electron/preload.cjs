@@ -1,3 +1,4 @@
+
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
@@ -15,7 +16,8 @@ contextBridge.exposeInMainWorld('electron', {
   onHostClientConnected: (cb) => ipcRenderer.on('host-client-connected', (e, ...args) => cb(...args)),
   onHostClientDisconnected: (cb) => ipcRenderer.on('host-client-disconnected', (e, ...args) => cb(...args)),
   onHostSignalReceived: (cb) => ipcRenderer.on('host-signal-received', (e, ...args) => cb(...args)),
-  hostSendSignal: (socketId, data) => ipcRenderer.send('host-send-signal', socketId, data),
+  // FIXED: Arguments must be wrapped in a single object to match the main process handler.
+  hostSendSignal: (socketId, data) => ipcRenderer.send('host-send-signal', { socketId, data }),
 
   // Guest-side logic
   connectToHost: (ip, port) => ipcRenderer.send('connect-to-host', ip, port),
