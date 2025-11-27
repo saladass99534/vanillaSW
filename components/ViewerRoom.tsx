@@ -43,6 +43,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   const [isInputIdle, setIsInputIdle] = useState(false); 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showNerdStats, setShowNerdStats] = useState(false); 
+  const [pickerStep, setPickerStep] = useState<'idle' | 'type' | 'genre' | 'reveal'>('idle');
   
   // Mobile Detection & Viewport
   const [isMobile, setIsMobile] = useState(false);
@@ -54,9 +55,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   
   const [stats, setStats] = useState<StreamStats>({ resolution: 'N/A', bitrate: '0', fps: 0, packetLoss: '0', latency: '0' });
   
-  // Stream Key to force re-render on new stream
-  const [streamKey, setStreamKey] = useState(0);
-
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
 
   const peerRef = useRef<SimplePeer.Instance | null>(null);
@@ -122,19 +120,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
           videoRef.current.muted = (volume === 0);
       }
   }, [volume]);
-
-  // Force play when stream becomes active to prevent black screen
-  useEffect(() => {
-      if (hasStream && videoRef.current) {
-          const timer = setTimeout(() => {
-              if (videoRef.current) {
-                  videoRef.current.play().catch(e => console.log("Autoplay check blocked:", e));
-                  setIsPlaying(!videoRef.current.paused);
-              }
-          }, 100);
-          return () => clearTimeout(timer);
-      }
-  }, [hasStream, streamKey]);
 
   const connectToHost = () => {
       if (!hostIpInput) return;
@@ -210,31 +195,29 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 });
 
                 p.on('stream', (stream) => {
-                    // Increment stream key to force re-mount of video player
-                    setStreamKey(prev => prev + 1);
-                    setHasStream(true);
-                    
-                    // Defer attachment slightly to let React re-mount
-                    setTimeout(() => {
-                        if (videoRef.current) {
-                            videoRef.current.srcObject = stream;
-                            videoRef.current.volume = volume; 
-                            videoRef.current.play().then(() => setIsPlaying(true)).catch(e => console.log("Autoplay blocked", e));
-                        }
-                        if (ambilightRef.current) {
-                            ambilightRef.current.srcObject = stream;
-                            ambilightRef.current.play().catch(() => {});
-                        }
-                    }, 50);
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = stream;
+                        videoRef.current.volume = volume; // Ensure initial volume is set
+                        videoRef.current.play().then(() => setIsPlaying(true)).catch(e => console.log("Autoplay blocked", e));
+                        setHasStream(true);
+                    }
+                    if (ambilightRef.current) {
+                        ambilightRef.current.srcObject = stream;
+                        ambilightRef.current.play().catch(() => {});
+                    }
                 });
 
                 p.on('data', (data) => {
                     try {
                         const msg = JSON.parse(data.toString());
                         if (msg.type === 'chat') {
+                            const newMsg = msg.payload;
+                            if (newMsg.isSystemEvent && newMsg.eventPayload) {
+                                setPickerStep(newMsg.eventPayload.state);
+                            }
                             setMessages(prev => {
-                                if (prev.some(m => m.id === msg.payload.id)) return prev;
-                                return [...prev, msg.payload];
+                                if (prev.some(m => m.id === newMsg.id)) return prev;
+                                return [...prev, newMsg];
                             });
                         }
                         if (msg.type === 'members') setMembers(msg.payload);
@@ -536,10 +519,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   // Dynamic height style for mobile viewport responsiveness
   const containerStyle = isMobile ? { height: `${viewportHeight}px` } : {};
 
-  // Check if movie picker is active
-  const lastSystemMessage = [...messages].reverse().find(m => m.isSystemEvent && m.eventPayload);
-  const pickerIsActive = lastSystemMessage?.eventPayload?.state === 'type_selection' || lastSystemMessage?.eventPayload?.state === 'genre_selection';
-
   return (
     <div style={containerStyle} className="flex flex-col md:flex-row h-[100dvh] bg-[#313338] text-gray-100 overflow-hidden font-sans relative transition-colors duration-500">
       
@@ -568,6 +547,32 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
         <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}>
             <Button variant="secondary" size="sm" onClick={() => setShowExitConfirm(true)} className="pointer-events-auto bg-white/10 backdrop-blur hover:bg-red-500/20 hover:text-red-200 transition-colors">Leave</Button>
         </div>
+
+        {/* FLOATING EMOJIS */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
+                {floatingEmojis.map(emoji => (
+                    <div 
+                        key={emoji.id}
+                        className="absolute bottom-0 text-6xl animate-float"
+                        style={{
+                            left: `${emoji.x}%`,
+                            animationDuration: `${emoji.animationDuration}s`,
+                            filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
+                            transform: 'perspective(500px) rotateX(10deg)'
+                        }}
+                    >
+                        {emoji.emoji}
+                    </div>
+                ))}
+                <style>{`
+                    @keyframes float {
+                        0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
+                        10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
+                        100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
+                    }
+                    .animate-float { animation-name: float; animation-timing-function: ease-out; }
+                `}</style>
+          </div>
 
         <div 
             ref={containerRef}
@@ -598,31 +603,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
               muted
           />
 
-          <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
-                {floatingEmojis.map(emoji => (
-                    <div 
-                        key={emoji.id}
-                        className="absolute bottom-0 text-6xl animate-float"
-                        style={{
-                            left: `${emoji.x}%`,
-                            animationDuration: `${emoji.animationDuration}s`,
-                            filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
-                            transform: 'perspective(500px) rotateX(10deg)'
-                        }}
-                    >
-                        {emoji.emoji}
-                    </div>
-                ))}
-                <style>{`
-                    @keyframes float {
-                        0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
-                        10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
-                        100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
-                    }
-                    .animate-float { animation-name: float; animation-timing-function: ease-out; }
-                `}</style>
-          </div>
-
           {showNerdStats && (
                 <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
                     <h4 className={`${activeTheme.primary} font-bold mb-1 flex items-center gap-1`}><Activity size={10}/> STREAM STATS (RECV)</h4>
@@ -648,15 +628,10 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
           )}
 
           <video 
-            ref={videoRef}
-            key={streamKey} // Force re-render on new stream to prevent black screen
+            ref={videoRef} 
             className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} 
             autoPlay 
             playsInline 
-            onCanPlay={() => {
-                // Ensure it plays immediately
-                videoRef.current?.play().then(() => setIsPlaying(true)).catch(() => {});
-            }}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
           />
@@ -707,14 +682,14 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                  <div className="w-px h-6 bg-white/10"></div>
 
                  <div className="flex gap-2 items-center">
-                     <button
-                        onClick={() => handlePickerAction('start_picker')}
-                        disabled={pickerIsActive}
-                        className={`p-2 rounded-full transition-colors active:scale-95 ${pickerIsActive ? 'text-gray-600 cursor-not-allowed' : `hover:bg-white/10 ${activeTheme.primary}`}`}
+                    <button 
+                        onClick={() => handlePickerAction('start_picker')} 
+                        disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')}
+                        className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${(pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'text-gray-600 cursor-not-allowed' : `${activeTheme.primary}`}`}
                         title="Suggest Movie"
-                     >
-                         <Clapperboard size={18} />
-                     </button>
+                    >
+                        <Clapperboard size={18} />
+                    </button>
                      <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${showNerdStats ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Nerd Stats">
                          <Activity size={18} />
                      </button>
@@ -738,7 +713,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
           flex flex-col flex-1 md:flex-none min-h-0 transition-all duration-500 ease-in-out rounded-3xl shadow-2xl
           ${mobileTypingMode 
               ? 'absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/40 to-transparent m-0 border-none rounded-none pointer-events-none justify-end h-2/3' 
-              : `bg-black/40 backdrop-blur-xl border ${activeTheme.border} ${activeTheme.glow} w-auto md:w-80 mx-4 mb-4 md:m-4` // Changed w-full to w-auto for mobile fix
+              : `bg-black/40 backdrop-blur-xl border ${activeTheme.border} ${activeTheme.glow} w-auto md:w-80 mx-4 mb-4 md:m-4`
           }
           ${sidebarCollapsed ? 'max-w-0 md:max-w-0 opacity-0 m-0 border-0 pointer-events-none' : 'w-full opacity-100'}
       `}>
@@ -748,8 +723,8 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                    <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>
                    <button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'members' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>MEMBERS</button>
                </div>
-               <div className={`flex-1 relative ${mobileTypingMode ? 'pointer-events-auto' : ''} min-h-0`}>
-                   {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col min-h-0"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
+               <div className={`flex-1 relative ${mobileTypingMode ? 'pointer-events-auto' : ''}`}>
+                   {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
                    {activeTab === 'members' && (
                        <div className="p-4 space-y-2">
                            {members.map(m => (

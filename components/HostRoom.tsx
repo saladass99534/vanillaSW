@@ -250,12 +250,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       fetchAudioDevices();
   }, [showSourceSelector]);
 
-  // Default to system audio if in screen mode, but allow user to change it freely in window mode
+  // Update default audio capture based on source type
   useEffect(() => {
       if (sourceTab === 'screen') {
           setAudioSource('system');
+      } else {
+          setAudioSource('none'); 
       }
-      // Removed the 'else' block that forced 'none' for window mode to allow user override
   }, [sourceTab]);
 
   useEffect(() => {
@@ -478,15 +479,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           }
 
           const videoConstraints = {
-              googPowerSaving: false, // Prevents stream freezing when Chrome is backgrounded/fullscreened
-              googCpuOveruseDetection: false,
               mandatory: {
                   chromeMediaSource: 'desktop',
                   chromeMediaSourceId: sourceId,
                   maxWidth: maxWidth,
                   maxHeight: maxHeight,
-                  maxFrameRate: 60,
-                  minFrameRate: 30 // Forces browser to keep rendering even if backgrounded
+                  maxFrameRate: 60
               }
           };
 
@@ -634,12 +632,11 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   };
 
   const handlePickerInteraction = (action: string, value?: string) => {
-      // Allow viewers to initiate
-      if (action === 'start_picker') {
+      if (action === 'start_picker') { // Action from viewer
           startSharedPicker();
           return;
       }
-      
+
       const msgId = Date.now().toString();
       let payload: any = {};
 
@@ -814,6 +811,32 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             </Button>
         </div>
 
+        {/* FLOATING EMOJIS */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
+            {floatingEmojis.map(emoji => (
+                <div 
+                    key={emoji.id}
+                    className="absolute bottom-0 text-6xl animate-float"
+                    style={{
+                        left: `${emoji.x}%`,
+                        animationDuration: `${emoji.animationDuration}s`,
+                        filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
+                        transform: 'perspective(500px) rotateX(10deg)'
+                    }}
+                >
+                    {emoji.emoji}
+                </div>
+            ))}
+            <style>{`
+                @keyframes float {
+                    0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
+                    10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
+                    100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
+                }
+                .animate-float { animation-name: float; animation-timing-function: ease-out; }
+            `}</style>
+        </div>
+
         {/* VIDEO CONTAINER */}
         <div 
             ref={containerRef}
@@ -871,9 +894,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                 {isMac ? (
                                     <>
                                         <AlertTriangle className="text-red-400 mb-2" size={32} />
-                                        <h3 className="text-white font-bold mb-1">MacOS Permission Error?</h3>
+                                        <h3 className="text-white font-bold mb-1">MacOS Permission Error</h3>
                                         <p className="text-gray-400 text-xs mb-4 max-w-md">
-                                            If sources are missing, ensure screen recording permission is granted in System Settings.
+                                            macOS is blocking screen recording. Check permissions.
                                         </p>
                                     </>
                                 ) : (
@@ -887,8 +910,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                     onClick={() => setSelectedSourceId(source.id)}
                                     className={`group relative rounded-xl overflow-hidden border-2 transition-all ${selectedSourceId === source.id ? `${activeTheme.border} ring-2 ring-opacity-30 bg-white/5` : 'border-white/5 hover:border-white/20 bg-[#2b2d31]'}`}
                                 >
-                                    <div className="h-32 flex items-center justify-center p-2 bg-black/20">
-                                        <img src={source.thumbnail} alt={source.name} className="w-auto h-full max-w-full object-contain shadow-md" />
+                                    <div className="aspect-video bg-black relative">
+                                        <img src={source.thumbnail} alt={source.name} className="w-full h-full object-contain" />
                                         {selectedSourceId === source.id && (
                                             <div className={`absolute inset-0 bg-black/20 flex items-center justify-center`}>
                                                 <div className={`${activeTheme.bg} rounded-full p-2 shadow-lg`}><Check size={20} className="text-white" /></div>
@@ -919,51 +942,43 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                     </select>
                                  </div>
 
-                                 <div className="flex flex-col gap-2">
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex items-center gap-1 w-24">
-                                            <label className="text-xs font-bold text-gray-400">Audio Source:</label>
-                                            <div 
-                                                className="relative flex items-center"
-                                                onMouseEnter={() => setShowAudioHelp(true)}
-                                                onMouseLeave={() => setShowAudioHelp(false)}
-                                            >
-                                                <HelpCircle size={12} className="text-gray-500 cursor-help" />
-                                                {showAudioHelp && (
-                                                    <div className="absolute bottom-full left-0 mb-2 w-64 p-3 bg-black border border-white/20 rounded-lg text-[10px] text-gray-300 shadow-xl z-50 animate-in fade-in duration-200">
-                                                        <p className="mb-2"><strong className="text-white">How to isolate browser audio?</strong></p>
-                                                        <ol className="list-decimal pl-3 space-y-1">
-                                                            <li>Install <strong>VB-CABLE</strong> driver.</li>
-                                                            <li>Open Windows <strong>"Volume mixer"</strong>.</li>
-                                                            <li>Change your Browser's Output to <strong>CABLE Input</strong>.</li>
-                                                            <li>Select <strong>CABLE Output</strong> in this menu.</li>
-                                                        </ol>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <select 
-                                            value={audioSource} 
-                                            onChange={(e) => setAudioSource(e.target.value)}
-                                            className="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:border-blue-500 outline-none cursor-pointer flex-1 max-w-[300px]"
+                                 <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1 w-24">
+                                        <label className="text-xs font-bold text-gray-400">Audio Source:</label>
+                                        <div 
+                                            className="relative flex items-center"
+                                            onMouseEnter={() => setShowAudioHelp(true)}
+                                            onMouseLeave={() => setShowAudioHelp(false)}
                                         >
-                                            <option value="none">No Audio (Silent)</option>
-                                            <option value="system">System Audio (Entire PC)</option>
-                                            <optgroup label="Specific Inputs (For Isolation)">
-                                                {audioInputDevices.map(device => (
-                                                    <option key={device.deviceId} value={device.deviceId}>
-                                                        {device.label || `Microphone ${device.deviceId.slice(0,5)}...`}
-                                                    </option>
-                                                ))}
-                                            </optgroup>
-                                        </select>
-                                    </div>
-                                    {isMac && sourceTab === 'window' && (
-                                        <div className="text-[10px] text-yellow-500/80 ml-26 flex items-start gap-1">
-                                            <AlertTriangle size={10} className="mt-0.5 flex-shrink-0" />
-                                            <span>MacOS often blocks audio from individual windows. Use 'Screen' mode or a virtual cable if audio is silent.</span>
+                                            <HelpCircle size={12} className="text-gray-500 cursor-help" />
+                                            {showAudioHelp && (
+                                                <div className="absolute bottom-full left-0 mb-2 w-64 p-3 bg-black border border-white/20 rounded-lg text-[10px] text-gray-300 shadow-xl z-50 animate-in fade-in duration-200">
+                                                    <p className="mb-2"><strong className="text-white">How to isolate browser audio?</strong></p>
+                                                    <ol className="list-decimal pl-3 space-y-1">
+                                                        <li>Install <strong>VB-CABLE</strong> driver.</li>
+                                                        <li>Open Windows <strong>"Volume mixer"</strong>.</li>
+                                                        <li>Change your Browser's Output to <strong>CABLE Input</strong>.</li>
+                                                        <li>Select <strong>CABLE Output</strong> in this menu.</li>
+                                                    </ol>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
+                                    </div>
+                                    <select 
+                                        value={audioSource} 
+                                        onChange={(e) => setAudioSource(e.target.value)}
+                                        className="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:border-blue-500 outline-none cursor-pointer flex-1 max-w-[300px]"
+                                    >
+                                        <option value="none">No Audio (Silent)</option>
+                                        <option value="system">System Audio (Entire PC)</option>
+                                        <optgroup label="Specific Inputs (For Isolation)">
+                                            {audioInputDevices.map(device => (
+                                                <option key={device.deviceId} value={device.deviceId}>
+                                                    {device.label || `Microphone ${device.deviceId.slice(0,5)}...`}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    </select>
                                  </div>
                             </div>
 
@@ -981,32 +996,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 </div>
             </div>
           )}
-
-          {/* FLOATING EMOJIS */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
-              {floatingEmojis.map(emoji => (
-                  <div 
-                      key={emoji.id}
-                      className="absolute bottom-0 text-6xl animate-float"
-                      style={{
-                          left: `${emoji.x}%`,
-                          animationDuration: `${emoji.animationDuration}s`,
-                          filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
-                          transform: 'perspective(500px) rotateX(10deg)'
-                      }}
-                  >
-                      {emoji.emoji}
-                  </div>
-              ))}
-              <style>{`
-                  @keyframes float {
-                      0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
-                      10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
-                      100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
-                  }
-                  .animate-float { animation-name: float; animation-timing-function: ease-out; }
-              `}</style>
-          </div>
 
           {!isSharing ? (
             <div className="text-center relative z-10">
@@ -1108,9 +1097,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                      </button>
                      <button 
                         onClick={startSharedPicker} 
-                        disabled={pickerStep !== 'idle' && pickerStep !== 'reveal'}
-                        className={`p-2.5 rounded-full transition-all active:scale-95 ${pickerStep !== 'idle' && pickerStep !== 'reveal' ? 'bg-white/5 text-gray-600 cursor-not-allowed' : `${activeTheme.primary} bg-white/5 hover:bg-white/10 hover:${activeTheme.primary.replace('text-', 'text-opacity-80')}`}`}
-                        title={"Suggest Movie"}
+                        disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')}
+                        className={`p-2.5 rounded-full transition-all active:scale-95 ${(pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'bg-white/5 text-gray-600 cursor-not-allowed' : `${activeTheme.primary} bg-white/5 hover:bg-white/10 hover:${activeTheme.primary.replace('text-', 'text-opacity-80')}`}`}
+                        title="Suggest Movie"
                      >
                          <Clapperboard size={18} />
                      </button>
@@ -1169,13 +1158,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         </div>
       </div>
 
-      <div className={`bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 transition-all duration-500 ease-in-out rounded-3xl border ${activeTheme.border} ${activeTheme.glow} shadow-2xl overflow-hidden ${sidebarCollapsed ? 'w-0 m-0 opacity-0 border-0 pointer-events-none' : 'w-auto md:w-80 mx-4 mb-4 md:m-4 opacity-100 border'}`}>
+      <div className={`bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 transition-all duration-500 ease-in-out rounded-3xl border ${activeTheme.border} ${activeTheme.glow} shadow-2xl ${sidebarCollapsed ? 'w-0 m-0 opacity-0 border-0 pointer-events-none' : 'w-auto md:w-80 mx-4 mb-4 md:m-4 opacity-100 border'}`}>
            <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
                <div className="flex p-2 gap-2">
                    <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>
                    <button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'members' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>MEMBERS</button>
                </div>
-               <div className="flex-1 relative min-h-0">
+               <div className="flex-1 overflow-hidden relative">
                    {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleHypeAction} onPickerAction={handlePickerInteraction} myId="HOST" theme={activeTheme} /></div>}
                    {activeTab === 'members' && (
                        <div className="p-4 space-y-2">

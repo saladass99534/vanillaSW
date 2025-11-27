@@ -1,5 +1,4 @@
 
-
 export enum AppMode {
   LANDING = 'LANDING',
   HOST = 'HOST',
@@ -80,16 +79,11 @@ export interface FloatingEmoji {
 declare global {
   interface Window {
     electron: {
-// Fix: Add definitions for window control methods
-      windowMinimize: () => void;
-      windowMaximize: () => void;
-      windowClose: () => void;
       getTailscaleStatus: () => Promise<any>;
       getDesktopSources: () => Promise<DesktopSource[]>;
       
       toggleWebServer: (enable: boolean) => void;
 
-      // Host Server Methods
       startHostServer: (port?: number) => void;
       stopHostServer: () => void;
       onHostServerStarted: (cb: (res: any) => void) => void;
@@ -98,7 +92,6 @@ declare global {
       onHostSignalReceived: (cb: (res: { socketId: string, data: any }) => void) => void;
       hostSendSignal: (socketId: string, data: any) => void;
 
-      // Guest Client Methods
       connectToHost: (ip: string, port?: number) => void;
       onGuestConnected: (cb: () => void) => void;
       onGuestSignalReceived: (cb: (data: any) => void) => void;

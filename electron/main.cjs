@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const WebSocket = require('ws');
@@ -46,18 +46,13 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    minWidth: 940,
-    minHeight: 560,
-    frame: true,      // Use native frame
-    titleBarStyle: 'hidden', // Hide default title bar but keep controls
-    titleBarOverlay: true, // Make controls float over content
+    fullscreen: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, 
-      webSecurity: false,
-      backgroundThrottling: false // Prevents stream freeze when app is in background
+      webSecurity: false 
     },
     autoHideMenuBar: true,
     backgroundColor: '#000000',
@@ -77,54 +72,16 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  // F11 toggles between maximized and restored states.
-  // This provides a "fullscreen" feel without using exclusive fullscreen,
-  // which prevents the OS from freezing streams from backgrounded windows.
-  globalShortcut.register('F11', () => {
-    if (mainWindow) {
-      if (mainWindow.isMaximized()) {
-        mainWindow.unmaximize();
-      } else {
-        mainWindow.maximize();
-      }
-    }
-  });
-
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
-
-app.on('will-quit', () => {
-  // Unregister all shortcuts.
-  globalShortcut.unregisterAll();
-});
-
 
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
 });
 
 // --- IPC Handlers ---
-
-// Fix: Add IPC handlers for window controls
-ipcMain.on('window-minimize', () => {
-  if (mainWindow) mainWindow.minimize();
-});
-
-ipcMain.on('window-maximize', () => {
-  if (mainWindow) {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow.maximize();
-    }
-  }
-});
-
-ipcMain.on('window-close', () => {
-  if (mainWindow) mainWindow.close();
-});
 
 // Toggle Web Server
 ipcMain.on('toggle-web-server', (event, enable) => {
