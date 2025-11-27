@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -83,6 +84,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [audioSource, setAudioSource] = useState<string>('system'); 
   const [streamQuality, setStreamQuality] = useState<'1080p' | '1440p' | '4k'>('1080p');
+  const [streamFps, setStreamFps] = useState<30 | 60>(60);
   const [showAudioHelp, setShowAudioHelp] = useState(false);
 
   // Media State
@@ -484,7 +486,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                   chromeMediaSourceId: sourceId,
                   maxWidth: maxWidth,
                   maxHeight: maxHeight,
-                  maxFrameRate: 60
+                  minFrameRate: streamFps,
+                  maxFrameRate: streamFps
               }
           };
 
@@ -883,14 +886,14 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         <button onClick={() => setSourceTab('window')} className={`flex-1 py-2 rounded-md text-sm font-bold transition-colors ${sourceTab === 'window' ? `${activeTheme.bg} text-white shadow-lg` : 'text-gray-400 hover:text-white'}`}>Windows</button>
                     </div>
 
-                    <div className="p-6 overflow-y-auto min-h-0 flex-1 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div className="p-6 flex gap-4 overflow-x-auto min-h-0 flex-1">
                         {isRefreshingSources ? (
-                            <div className="col-span-3 py-20 flex flex-col items-center justify-center text-gray-500 animate-pulse">
+                            <div className="w-full py-20 flex flex-col items-center justify-center text-gray-500 animate-pulse">
                                 <RefreshCw className="animate-spin mb-2" size={32} />
                                 <p>Loading sources...</p>
                             </div>
                         ) : displayedSources.length === 0 ? (
-                            <div className="col-span-3 py-10 flex flex-col items-center justify-center bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center">
+                            <div className="w-full py-10 flex flex-col items-center justify-center bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center">
                                 {isMac ? (
                                     <>
                                         <AlertTriangle className="text-red-400 mb-2" size={32} />
@@ -908,10 +911,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                 <button
                                     key={source.id}
                                     onClick={() => setSelectedSourceId(source.id)}
-                                    className={`group relative rounded-xl overflow-hidden border-2 transition-all ${selectedSourceId === source.id ? `${activeTheme.border} ring-2 ring-opacity-30 bg-white/5` : 'border-white/5 hover:border-white/20 bg-[#2b2d31]'}`}
+                                    className={`flex-shrink-0 w-64 group relative rounded-xl overflow-hidden border-2 transition-all ${selectedSourceId === source.id ? `${activeTheme.border} ring-2 ring-opacity-30 bg-white/5` : 'border-white/5 hover:border-white/20 bg-[#2b2d31]'}`}
                                 >
-                                    <div className="aspect-video bg-black relative">
-                                        <img src={source.thumbnail} alt={source.name} className="w-full h-full object-contain" />
+                                    <div className="h-32 flex items-center justify-center bg-black relative overflow-hidden">
+                                        <img src={source.thumbnail} alt={source.name} className="max-w-full max-h-full object-contain" />
                                         {selectedSourceId === source.id && (
                                             <div className={`absolute inset-0 bg-black/20 flex items-center justify-center`}>
                                                 <div className={`${activeTheme.bg} rounded-full p-2 shadow-lg`}><Check size={20} className="text-white" /></div>
@@ -939,6 +942,17 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                         <option value="1080p">1080p (Smooth)</option>
                                         <option value="1440p">1440p (QHD)</option>
                                         <option value="4k">4K (Ultra HD)</option>
+                                    </select>
+                                 </div>
+                                 <div className="flex items-center gap-2">
+                                    <label className="text-xs font-bold text-gray-400 w-24">Frame Rate:</label>
+                                    <select
+                                        value={streamFps}
+                                        onChange={(e) => setStreamFps(Number(e.target.value) as 30 | 60)}
+                                        className="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:border-blue-500 outline-none cursor-pointer flex-1 max-w-[200px]"
+                                    >
+                                        <option value={60}>60 FPS (Silky Smooth)</option>
+                                        <option value={30}>30 FPS (Standard)</option>
                                     </select>
                                  </div>
 
