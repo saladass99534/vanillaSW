@@ -46,7 +46,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    fullscreen: false,
+    fullscreen: true,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'), // Corrected to .cjs
@@ -298,5 +298,6 @@ ipcMain.on('guest-send-signal', (event, data) => {
     guestWs.send(JSON.stringify(data));
   }
 });
+
 
 
