@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { Button } from './Button';
@@ -548,32 +549,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
             <Button variant="secondary" size="sm" onClick={() => setShowExitConfirm(true)} className="pointer-events-auto bg-white/10 backdrop-blur hover:bg-red-500/20 hover:text-red-200 transition-colors">Leave</Button>
         </div>
 
-        {/* FLOATING EMOJIS */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
-                {floatingEmojis.map(emoji => (
-                    <div 
-                        key={emoji.id}
-                        className="absolute bottom-0 text-6xl animate-float"
-                        style={{
-                            left: `${emoji.x}%`,
-                            animationDuration: `${emoji.animationDuration}s`,
-                            filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
-                            transform: 'perspective(500px) rotateX(10deg)'
-                        }}
-                    >
-                        {emoji.emoji}
-                    </div>
-                ))}
-                <style>{`
-                    @keyframes float {
-                        0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
-                        10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
-                        100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
-                    }
-                    .animate-float { animation-name: float; animation-timing-function: ease-out; }
-                `}</style>
-          </div>
-
         <div 
             ref={containerRef}
             className="flex-1 flex items-center justify-center relative bg-black group"
@@ -589,6 +564,31 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 }
             }}
         >
+          {/* FLOATING EMOJIS */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
+                  {floatingEmojis.map(emoji => (
+                      <div 
+                          key={emoji.id}
+                          className="absolute bottom-0 text-6xl animate-float"
+                          style={{
+                              left: `${emoji.x}%`,
+                              animationDuration: `${emoji.animationDuration}s`,
+                              filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
+                              transform: 'perspective(500px) rotateX(10deg)'
+                          }}
+                      >
+                          {emoji.emoji}
+                      </div>
+                  ))}
+                  <style>{`
+                      @keyframes float {
+                          0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
+                          10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
+                          100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
+                      }
+                      .animate-float { animation-name: float; animation-timing-function: ease-out; }
+                  `}</style>
+            </div>
           {!hasStream && (
             <div className="text-center animate-pulse">
                 <Tv size={48} className="mx-auto text-gray-700 mb-4" />

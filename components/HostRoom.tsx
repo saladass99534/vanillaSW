@@ -848,32 +848,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             </Button>
         </div>
 
-        {/* FLOATING EMOJIS */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
-            {floatingEmojis.map(emoji => (
-                <div 
-                    key={emoji.id}
-                    className="absolute bottom-0 text-6xl animate-float"
-                    style={{
-                        left: `${emoji.x}%`,
-                        animationDuration: `${emoji.animationDuration}s`,
-                        filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
-                        transform: 'perspective(500px) rotateX(10deg)'
-                    }}
-                >
-                    {emoji.emoji}
-                </div>
-            ))}
-            <style>{`
-                @keyframes float {
-                    0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
-                    10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
-                    100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
-                }
-                .animate-float { animation-name: float; animation-timing-function: ease-out; }
-            `}</style>
-        </div>
-
         {/* VIDEO CONTAINER */}
         <div 
             ref={containerRef}
@@ -885,6 +859,31 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500);
             }}
         >
+          {/* FLOATING EMOJIS */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
+              {floatingEmojis.map(emoji => (
+                  <div 
+                      key={emoji.id}
+                      className="absolute bottom-0 text-6xl animate-float"
+                      style={{
+                          left: `${emoji.x}%`,
+                          animationDuration: `${emoji.animationDuration}s`,
+                          filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
+                          transform: 'perspective(500px) rotateX(10deg)'
+                      }}
+                  >
+                      {emoji.emoji}
+                  </div>
+              ))}
+              <style>{`
+                  @keyframes float {
+                      0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
+                      10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
+                      100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
+                  }
+                  .animate-float { animation-name: float; animation-timing-function: ease-out; }
+              `}</style>
+          </div>
           {/* EXIT CONFIRMATION MODAL */}
           {showExitConfirm && (
             <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
