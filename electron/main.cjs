@@ -49,11 +49,12 @@ function createWindow() {
     fullscreen: false,
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'), // Corrected to .js
+      preload: path.join(__dirname, 'preload.cjs'), // Corrected to .cjs
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, 
-      webSecurity: false 
+      webSecurity: false,
+      backgroundThrottling: false
     },
     autoHideMenuBar: true,
     backgroundColor: '#000000',
@@ -297,4 +298,5 @@ ipcMain.on('guest-send-signal', (event, data) => {
     guestWs.send(JSON.stringify(data));
   }
 });
+
 
