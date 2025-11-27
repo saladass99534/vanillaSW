@@ -345,13 +345,26 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                           if (report.type === 'inbound-rtp' && report.kind === 'video') {
                               if (videoRef.current) {
                                   if (lastStatsRef.current) {
+                                      // Reset detection: if the new byte count is less than the old one,
+                                      // it means the counter has reset. We should skip this calculation round.
+                                      if (report.bytesReceived < lastStatsRef.current.bytesReceived) {
+                                          // Just update the reference for the next calculation and continue
+                                          lastStatsRef.current = {
+                                              timestamp: report.timestamp,
+                                              bytesReceived: report.bytesReceived,
+                                          };
+                                          return;
+                                      }
+
                                       const bytesSinceLast = report.bytesReceived - lastStatsRef.current.bytesReceived;
                                       const timeSinceLast = report.timestamp - lastStatsRef.current.timestamp;
+                                      
                                       if (timeSinceLast > 0) {
                                           const bitrate = Math.round((bytesSinceLast * 8) / timeSinceLast); // kbps
                                           setStats(prev => ({ ...prev, bitrate: `${(bitrate / 1000).toFixed(1)} Mbps` }));
                                       }
                                   }
+                                  // Update the reference for the next interval
                                   lastStatsRef.current = {
                                       timestamp: report.timestamp,
                                       bytesReceived: report.bytesReceived,
@@ -405,6 +418,14 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
         } else if ((document as any).webkitExitFullscreen) {
             (document as any).webkitExitFullscreen();
         }
+    }
+  };
+
+  const toggleTheaterMode = () => {
+    if (isFullscreen) {
+      document.exitFullscreen();
+    } else {
+      setIsTheaterMode(!isTheaterMode);
     }
   };
 
@@ -552,9 +573,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
             type 
           };
           setMessages(prev => {
-// FIX: The `setMessages` callback used `p` instead of `prev`, which is a typo.
               if (prev.some(m => m.id === msg.id)) return prev;
-// FIX: The `setMessages` callback used `p` instead of `prev`, which is a typo.
               return [...prev, msg];
           });
           peerRef.current.send(JSON.stringify({ type: 'chat', payload: msg }));
@@ -786,7 +805,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                      <button onClick={togglePiP} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95" title="Picture-in-Picture">
                          <PictureInPicture size={18} />
                      </button>
-                     <button onClick={() => setIsTheaterMode(!isTheaterMode)} className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${isTheaterMode ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Toggle Theater Mode">
+                     <button onClick={toggleTheaterMode} className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${isTheaterMode ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Toggle Theater Mode">
                          <Tv size={18} />
                      </button>
                      <button onClick={toggleFullscreen} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95" title="Fullscreen">

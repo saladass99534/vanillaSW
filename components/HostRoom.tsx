@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -423,13 +424,26 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                           if (report.type === 'outbound-rtp' && report.kind === 'video') {
                               if (videoRef.current) {
                                   if (lastStatsRef.current) {
+                                      // Reset detection: if the new byte count is less than the old one,
+                                      // it means the counter has reset. We should skip this calculation round.
+                                      if (report.bytesSent < lastStatsRef.current.bytesSent) {
+                                          // Just update the reference for the next calculation and continue
+                                          lastStatsRef.current = {
+                                              timestamp: report.timestamp,
+                                              bytesSent: report.bytesSent,
+                                          };
+                                          return;
+                                      }
+
                                       const bytesSinceLast = report.bytesSent - lastStatsRef.current.bytesSent;
                                       const timeSinceLast = report.timestamp - lastStatsRef.current.timestamp;
+                                      
                                       if (timeSinceLast > 0) {
-                                          const bitrate = Math.round((bytesSinceLast * 8) / timeSinceLast); // This will be in kbps because timestamp is in ms
+                                          const bitrate = Math.round((bytesSinceLast * 8) / timeSinceLast); // kbps
                                           setStats(prev => ({ ...prev, bitrate: `${(bitrate / 1000).toFixed(1)} Mbps` }));
                                       }
                                   }
+                                  // Update the reference for the next interval
                                   lastStatsRef.current = {
                                       timestamp: report.timestamp,
                                       bytesSent: report.bytesSent,
@@ -628,7 +642,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                           echoCancellation: false,
                           noiseSuppression: false,
                           channelCount: 2, 
-                          latency: 0.01 
+                          latency: 0 
                       } as any,
                       video: false
                   });
@@ -706,6 +720,14 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         elem?.requestFullscreen().catch(err => console.log(err));
     } else {
         document.exitFullscreen();
+    }
+  };
+
+  const toggleTheaterMode = () => {
+    if (isFullscreen) {
+      document.exitFullscreen();
+    } else {
+      setIsTheaterMode(!isTheaterMode);
     }
   };
 
@@ -1256,7 +1278,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                      <button onClick={togglePiP} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95" title="Picture-in-Picture">
                          <PictureInPicture size={18} />
                      </button>
-                     <button onClick={() => setIsTheaterMode(!isTheaterMode)} className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${isTheaterMode ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Theater Mode">
+                     <button onClick={toggleTheaterMode} className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${isTheaterMode ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Theater Mode">
                          <Tv size={18} />
                      </button>
                      <button onClick={toggleFullscreen} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95" title="Fullscreen">
