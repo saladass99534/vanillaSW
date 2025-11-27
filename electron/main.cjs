@@ -49,7 +49,7 @@ function createWindow() {
     fullscreen: false,
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'), // Corrected to .js
+      preload: path.join(__dirname, 'preload.cjs'), // Corrected to .js
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, 
@@ -297,3 +297,4 @@ ipcMain.on('guest-send-signal', (event, data) => {
     guestWs.send(JSON.stringify(data));
   }
 });
+
