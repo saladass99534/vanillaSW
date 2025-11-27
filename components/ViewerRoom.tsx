@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { Button } from './Button';
@@ -312,6 +310,10 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 peerRef.current = p;
             }
             
+            // Extract piggybacked bitrate from offer before signaling
+            if (payload.bitrate) {
+                enforcedBitrateRef.current = payload.bitrate;
+            }
             peerRef.current.signal(payload.data);
         }
   };

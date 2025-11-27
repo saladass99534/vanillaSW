@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -362,16 +360,22 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         });
 
         p.on('signal', (data) => {
-            if (data.type === 'offer' && streamBitrateRef.current > 0) {
-                data.sdp = setVideoBitrate(data.sdp!, streamBitrateRef.current);
+            // Piggyback bitrate info onto the initial offer signal
+            const signalPayload = { type: 'signal', data, bitrate: 0 };
+            if (data.type === 'offer') {
+                if (streamBitrateRef.current > 0) {
+                    data.sdp = setVideoBitrate(data.sdp!, streamBitrateRef.current);
+                }
+                signalPayload.bitrate = streamBitrateRef.current;
             }
-            window.electron.hostSendSignal(socketId, { type: 'signal', data });
+            window.electron.hostSendSignal(socketId, signalPayload);
         });
 
         p.on('connect', () => {
             sendDataToPeer(p, { type: 'members', payload: members });
             sendDataToPeer(p, { type: 'theme_change', payload: currentTheme });
             if (streamRef.current) {
+                // This is now a fallback, primary method is piggybacking on offer
                 sendDataToPeer(p, { type: 'bitrate_sync', payload: streamBitrateRef.current });
             }
         });
