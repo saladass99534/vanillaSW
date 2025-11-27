@@ -53,7 +53,8 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, 
-      webSecurity: false 
+      webSecurity: false,
+      backgroundThrottling: false // Prevents stream freeze when app is in background
     },
     autoHideMenuBar: true,
     backgroundColor: '#000000',

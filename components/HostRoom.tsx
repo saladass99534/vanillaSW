@@ -483,7 +483,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                   chromeMediaSourceId: sourceId,
                   maxWidth: maxWidth,
                   maxHeight: maxHeight,
-                  maxFrameRate: 60
+                  maxFrameRate: 60,
+                  minFrameRate: 30 // Forces browser to keep rendering even if backgrounded
               }
           };
 
