@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { HostRoom } from './components/HostRoom';
 import { ViewerRoom } from './components/ViewerRoom';
+import { TitleBar } from './components/TitleBar';
 import { AppMode } from './types';
 import { Users, ShieldCheck, Zap, ArrowRight, Globe, RefreshCw, Network } from 'lucide-react';
 
@@ -77,6 +78,10 @@ export default function App() {
   const [peers, setPeers] = useState<any[]>([]);
   const [scanning, setScanning] = useState(false);
   
+  const [isTitleBarVisible, setIsTitleBarVisible] = useState(false);
+  const [windowState, setWindowState] = useState({ isMaximized: true, isFullscreen: false });
+  const titleBarTimeoutRef = useRef<number | null>(null);
+  
   const electronAvailable = typeof window !== 'undefined' && window.electron !== undefined;
 
   useEffect(() => {
@@ -87,12 +92,12 @@ export default function App() {
     };
     window.addEventListener('mousemove', handleGlobalMouseMove);
     
-    // Initial Scan
+    // Initial Scan & Window State Listener
     if (electronAvailable) {
         scanNetwork();
-    } else {
-        // If in browser mode, default to Viewer Mode automatically if visiting from a link
-        // Or just stay on Landing page
+        window.electron.onWindowState(setState => {
+          setWindowState(setState);
+        });
     }
 
     return () => window.removeEventListener('mousemove', handleGlobalMouseMove);
@@ -116,6 +121,19 @@ export default function App() {
           setScanning(false);
       }
   };
+  
+  const handleTitleBarEnter = () => {
+    if (titleBarTimeoutRef.current) {
+        clearTimeout(titleBarTimeoutRef.current);
+    }
+    setIsTitleBarVisible(true);
+  };
+
+  const handleTitleBarLeave = () => {
+      titleBarTimeoutRef.current = window.setTimeout(() => {
+          setIsTitleBarVisible(false);
+      }, 300);
+  };
 
   if (mode === AppMode.HOST) {
     return <HostRoom onBack={() => setMode(AppMode.LANDING)} />;
@@ -127,6 +145,18 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-black text-white selection:bg-blue-500/30 font-sans overflow-x-hidden relative">
+      
+      {electronAvailable && (
+        <div 
+            onMouseEnter={handleTitleBarEnter} 
+            onMouseLeave={handleTitleBarLeave} 
+            className="fixed top-0 left-0 right-0 h-8 z-[9999]"
+        >
+            <div className={`transition-opacity duration-300 ${isTitleBarVisible && !windowState.isFullscreen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+              <TitleBar isMaximized={windowState.isMaximized} />
+            </div>
+        </div>
+      )}
       
       {/* --- LIVING BACKGROUND --- */}
       <div className="fixed inset-0 z-0 pointer-events-none">
@@ -143,7 +173,7 @@ export default function App() {
          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_70%,transparent_100%)]"></div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-6 pt-8 md:pt-12 pb-12 flex flex-col items-center min-h-screen">
+      <div className={`relative z-10 max-w-7xl mx-auto px-6 pb-12 flex flex-col items-center min-h-screen ${electronAvailable ? 'pt-12' : 'pt-8 md:pt-12'}`}>
         
         {/* Navbar */}
         <div className="w-full flex justify-between items-center mb-12">

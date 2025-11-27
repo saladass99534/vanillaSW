@@ -1,4 +1,5 @@
 
+
 export enum AppMode {
   LANDING = 'LANDING',
   HOST = 'HOST',
@@ -84,6 +85,13 @@ declare global {
       
       toggleWebServer: (enable: boolean) => void;
 
+      // Window Controls
+      windowMinimize: () => void;
+      windowMaximize: () => void;
+      windowClose: () => void;
+      onWindowState: (cb: (state: { isMaximized: boolean; isFullscreen: boolean }) => void) => void;
+
+      // Host Server Methods
       startHostServer: (port?: number) => void;
       stopHostServer: () => void;
       onHostServerStarted: (cb: (res: any) => void) => void;
@@ -92,6 +100,7 @@ declare global {
       onHostSignalReceived: (cb: (res: { socketId: string, data: any }) => void) => void;
       hostSendSignal: (socketId: string, data: any) => void;
 
+      // Guest Client Methods
       connectToHost: (ip: string, port?: number) => void;
       onGuestConnected: (cb: () => void) => void;
       onGuestSignalReceived: (cb: (data: any) => void) => void;

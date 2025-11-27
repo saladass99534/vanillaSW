@@ -46,8 +46,11 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
+    minWidth: 940,
+    minHeight: 560,
     fullscreen: false, // Start in windowed mode
     frame: false,      // Borderless
+    titleBarStyle: 'hidden',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -71,6 +74,24 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+  
+  // Send window state changes to renderer
+  const sendWindowState = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('window:state', {
+            isMaximized: mainWindow.isMaximized(),
+            isFullscreen: mainWindow.isFullScreen(),
+        });
+    }
+  };
+    
+  mainWindow.on('maximize', sendWindowState);
+  mainWindow.on('unmaximize', sendWindowState);
+  mainWindow.on('enter-full-screen', sendWindowState);
+  mainWindow.on('leave-full-screen', sendWindowState);
+  
+  // Initial state send
+  mainWindow.webContents.on('did-finish-load', sendWindowState);
 }
 
 app.whenReady().then(() => {
@@ -81,6 +102,23 @@ app.whenReady().then(() => {
     if (mainWindow) {
       mainWindow.setFullScreen(!mainWindow.isFullScreen());
     }
+  });
+  
+  // --- Window Controls IPC ---
+  ipcMain.on('window:minimize', () => {
+    mainWindow.minimize();
+  });
+  
+  ipcMain.on('window:maximize', () => {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  });
+
+  ipcMain.on('window:close', () => {
+    mainWindow.close();
   });
 
   app.on('activate', function () {

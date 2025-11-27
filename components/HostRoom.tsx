@@ -478,6 +478,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           }
 
           const videoConstraints = {
+              googPowerSaving: false, // Prevents stream freezing when Chrome is backgrounded/fullscreened
               googCpuOveruseDetection: false,
               mandatory: {
                   chromeMediaSource: 'desktop',
