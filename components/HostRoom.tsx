@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -29,7 +30,7 @@ const THEMES: Record<string, { primary: string, glow: string, border: string, bg
   Thriller: { primary: 'text-emerald-400', glow: 'shadow-emerald-500/50', border: 'border-emerald-500/30', bg: 'bg-emerald-500', accent: 'accent-emerald-500' },
 };
 
-// Helper function to modify SDP for bitrate control
+// Helper function to modify SDP for strict bitrate control
 const setVideoBitrate = (sdp: string, bitrate: number): string => {
     if (bitrate <= 0) return sdp; // Do nothing if bitrate is automatic
 
@@ -49,14 +50,58 @@ const setVideoBitrate = (sdp: string, bitrate: number): string => {
         return sdp;
     }
 
-    // Check if b=AS already exists and remove it to avoid duplicates
-    sdpLines = sdpLines.filter(line => !line.startsWith('b=AS:'));
-
-    // Add the bitrate control line right after the `m=video` line
-    // The bitrate is in kbps, so we don't need to divide by 1000.
-    sdpLines.splice(videoMLineIndex + 1, 0, `b=AS:${bitrate}`);
+    // 1. General compatibility: b=AS (Application Specific)
+    // Remove any existing b=AS lines to avoid duplicates
+    let newSdpLines = sdpLines.filter(line => !line.startsWith('b=AS:'));
+    // Add the new b=AS line right after the `m=video` line
+    newSdpLines.splice(videoMLineIndex + 1, 0, `b=AS:${bitrate}`);
     
-    return sdpLines.join('\r\n');
+    // 2. Chrome-specific strict enforcement: x-google-*
+    let codecPayloadType = -1;
+    // Find a preferred codec payload type (VP9, H264, etc.)
+    const codecRegex = /a=rtpmap:(\d+) (VP9|H264)\/90000/;
+    for (const line of newSdpLines) {
+        const match = line.match(codecRegex);
+        if (match) {
+            codecPayloadType = parseInt(match[1], 10);
+            // Prefer VP9 if available, otherwise stick with the first one found
+            if (line.includes('VP9')) {
+                break;
+            }
+        }
+    }
+    
+    if (codecPayloadType !== -1) {
+        let fmtpLineIndex = -1;
+        // Find the `a=fmtp` line for the found codec
+        for (let i = 0; i < newSdpLines.length; i++) {
+            if (newSdpLines[i].startsWith(`a=fmtp:${codecPayloadType}`)) {
+                fmtpLineIndex = i;
+                break;
+            }
+        }
+        
+        // These are in kbps for the SDP
+        const bitrateParams = `x-google-min-bitrate=${bitrate};x-google-start-bitrate=${bitrate};x-google-max-bitrate=${bitrate}`;
+
+        if (fmtpLineIndex !== -1) {
+            // Append to existing fmtp line, ensuring no duplicate params
+            const existingLine = newSdpLines[fmtpLineIndex];
+            if (!existingLine.includes('x-google-min-bitrate')) {
+                 newSdpLines[fmtpLineIndex] = `${existingLine}; ${bitrateParams}`;
+            }
+        } else {
+            // Create a new fmtp line if it doesn't exist
+            let rtpmapLineIndex = newSdpLines.findIndex(line => line.startsWith(`a=rtpmap:${codecPayloadType}`));
+            if(rtpmapLineIndex !== -1) {
+                newSdpLines.splice(rtpmapLineIndex + 1, 0, `a=fmtp:${codecPayloadType} ${bitrateParams}`);
+            }
+        }
+    } else {
+        console.warn('Could not find a supported video codec (VP9/H264) to apply strict bitrate settings.');
+    }
+    
+    return newSdpLines.join('\r\n');
 };
 
 export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
