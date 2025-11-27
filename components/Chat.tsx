@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Send, Smile, X, Reply, Loader2, Clapperboard, Tv, RefreshCw, Star, Pin, Zap } from 'lucide-react';
 import { ChatMessage, ReplyContext, Reaction, PickerEvent } from '../types';
@@ -483,6 +484,10 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
                     onBlur={onInputBlur}
                     placeholder={isOverlay ? "Type a message..." : "Message..."}
                     className="flex-1 bg-transparent border-none text-white text-sm px-1 focus:outline-none placeholder-gray-500/70 min-w-0"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
                 />
                 
                 {inputText.trim() && (
