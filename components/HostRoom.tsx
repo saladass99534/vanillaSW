@@ -1252,7 +1252,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                      </button>
                      <button 
                         onClick={startSharedPicker} 
-                        disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal') || isSharing}
+                        disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')}
                         className={`p-2.5 rounded-full transition-all active:scale-95 disabled:cursor-not-allowed disabled:text-gray-600 disabled:bg-white/5 ${ (pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'bg-white/5 text-gray-600' : `${activeTheme.primary} bg-white/5 hover:bg-white/10 hover:${activeTheme.primary.replace('text-', 'text-opacity-80')}`}`}
                         title="Suggest Movie"
                      >
