@@ -4,7 +4,7 @@ import { ViewerRoom } from './components/ViewerRoom';
 import { AppMode } from './types';
 import { Users, ShieldCheck, Zap, ArrowRight, Globe, RefreshCw, Network } from 'lucide-react';
 
-// ... TiltCard Component remains the same ...
+// ... TiltCard Component remains exactly the same ...
 interface TiltCardProps {
   children: React.ReactNode;
   onClick: () => void;
@@ -90,9 +90,6 @@ export default function App() {
     // Initial Scan
     if (electronAvailable) {
         scanNetwork();
-    } else {
-        // If in browser mode, default to Viewer Mode automatically if visiting from a link
-        // Or just stay on Landing page
     }
 
     return () => window.removeEventListener('mousemove', handleGlobalMouseMove);
@@ -126,24 +123,26 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white selection:bg-blue-500/30 font-sans overflow-x-hidden relative">
+    // UPDATED CONTAINER: min-h-screen ensures it grows if content grows. pb-24 adds padding at bottom for mobile scrolling.
+    <div className="min-h-screen w-full bg-black text-white selection:bg-blue-500/30 font-sans relative overflow-x-hidden">
       
-      {/* --- LIVING BACKGROUND --- */}
+      {/* --- LIVING BACKGROUND (Fixed, so it stays put while you scroll) --- */}
       <div className="fixed inset-0 z-0 pointer-events-none">
          <div 
-            className="absolute top-[-10%] left-[20%] w-[40vw] h-[40vw] bg-purple-900/20 rounded-full blur-[128px] animate-blob"
-            style={{ transform: `translate(${mousePos.x * -20}px, ${mousePos.y * -20}px)` }}
+           className="absolute top-[-10%] left-[20%] w-[40vw] h-[40vw] bg-purple-900/20 rounded-full blur-[128px] animate-blob"
+           style={{ transform: `translate(${mousePos.x * -20}px, ${mousePos.y * -20}px)` }}
          />
          <div 
-            className="absolute bottom-[-10%] right-[10%] w-[35vw] h-[35vw] bg-blue-900/10 rounded-full blur-[128px] animate-blob animation-delay-2000"
-            style={{ transform: `translate(${mousePos.x * 20}px, ${mousePos.y * 20}px)` }}
+           className="absolute bottom-[-10%] right-[10%] w-[35vw] h-[35vw] bg-blue-900/10 rounded-full blur-[128px] animate-blob animation-delay-2000"
+           style={{ transform: `translate(${mousePos.x * 20}px, ${mousePos.y * 20}px)` }}
          />
          
          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_70%,transparent_100%)]"></div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-6 pt-8 md:pt-12 pb-12 flex flex-col items-center min-h-screen">
+      {/* UPDATED: Added pb-24 to ensure bottom content isn't cut off on phones */}
+      <div className="relative z-10 max-w-7xl mx-auto px-6 pt-8 md:pt-12 pb-24 flex flex-col items-center">
         
         {/* Navbar */}
         <div className="w-full flex justify-between items-center mb-12">
@@ -160,7 +159,8 @@ export default function App() {
         <div className="text-center max-w-5xl mx-auto mt-4 mb-16 relative">
            <div className="relative inline-block mb-6 group cursor-default">
               <div className="absolute inset-0 bg-blue-600/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-              <h1 className="text-5xl sm:text-7xl md:text-9xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-gray-500 drop-shadow-2xl leading-tight">
+              {/* UPDATED: Text sizes to better fit mobile */}
+              <h1 className="text-4xl sm:text-6xl md:text-9xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-gray-500 drop-shadow-2xl leading-tight">
                 SheiyuWatch
               </h1>
            </div>
@@ -170,7 +170,7 @@ export default function App() {
               <span>Tailscale Optimized P2P Network</span>
            </div>
            
-           <p className="text-lg md:text-2xl text-gray-400 max-w-2xl mx-auto leading-relaxed mb-8 font-light px-4">
+           <p className="text-base md:text-2xl text-gray-400 max-w-2xl mx-auto leading-relaxed mb-8 font-light px-4">
              Serverless, High-Fidelity Screen Sharing.<br/>
              <span className="text-white font-normal">Connect via Tailscale. 0% compression artifacts.</span>
            </p>
@@ -181,28 +181,28 @@ export default function App() {
             {/* Host Card - Disable on Web */}
             <div className={`h-[280px] md:h-[350px] ${!electronAvailable ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
               <TiltCard onClick={() => electronAvailable && setMode(AppMode.HOST)} accentColor="#3b82f6">
-                 <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/5 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 border border-blue-500/20">
-                    <Zap className="text-blue-400 w-8 h-8" />
-                 </div>
-                 <h2 className="text-3xl font-bold mb-2">Host Party</h2>
-                 <p className="text-gray-400 mb-8 text-sm">Broadcast your screen in 1080p 60fps to your Tailnet.</p>
-                 <div className="mt-auto flex items-center gap-3 text-blue-400 font-medium uppercase tracking-wider text-sm">
+                  <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/5 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 border border-blue-500/20">
+                     <Zap className="text-blue-400 w-8 h-8" />
+                  </div>
+                  <h2 className="text-2xl md:text-3xl font-bold mb-2">Host Party</h2>
+                  <p className="text-gray-400 mb-8 text-sm">Broadcast your screen in 1080p 60fps to your Tailnet.</p>
+                  <div className="mt-auto flex items-center gap-3 text-blue-400 font-medium uppercase tracking-wider text-sm">
                     {electronAvailable ? 'Initialize' : 'Desktop App Required'} <ArrowRight size={16} />
-                 </div>
+                  </div>
               </TiltCard>
             </div>
 
             {/* Viewer Card - Always Active */}
             <div className="h-[280px] md:h-[350px]">
               <TiltCard onClick={() => setMode(AppMode.VIEWER)} accentColor="#a855f7">
-                 <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/5 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 border border-purple-500/20">
-                    <Users className="text-purple-400 w-8 h-8" />
-                 </div>
-                 <h2 className="text-3xl font-bold mb-2">Join Party</h2>
-                 <p className="text-gray-400 mb-8 text-sm">Connect to a host IP address directly.</p>
-                 <div className="mt-auto flex items-center gap-3 text-purple-400 font-medium uppercase tracking-wider text-sm">
+                  <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/5 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 border border-purple-500/20">
+                     <Users className="text-purple-400 w-8 h-8" />
+                  </div>
+                  <h2 className="text-2xl md:text-3xl font-bold mb-2">Join Party</h2>
+                  <p className="text-gray-400 mb-8 text-sm">Connect to a host IP address directly.</p>
+                  <div className="mt-auto flex items-center gap-3 text-purple-400 font-medium uppercase tracking-wider text-sm">
                     Connect <ArrowRight size={16} />
-                 </div>
+                  </div>
               </TiltCard>
             </div>
         </div>
@@ -211,7 +211,7 @@ export default function App() {
         {electronAvailable && (
             <div className="w-full max-w-4xl border-t border-white/10 pt-10">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <h3 className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                         <Network size={16} /> Tailscale Network Discovery
                     </h3>
                     <button onClick={scanNetwork} className={`p-2 rounded-full hover:bg-white/10 transition-colors ${scanning ? 'animate-spin' : ''}`}>
@@ -219,9 +219,10 @@ export default function App() {
                     </button>
                 </div>
                 
+                {/* Grid automatically stacks on mobile (grid-cols-1) and expands on desktop (md:grid-cols-3) */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {peers.length === 0 ? (
-                        <div className="col-span-3 text-center py-8 border border-dashed border-white/10 rounded-xl">
+                        <div className="col-span-1 md:col-span-3 text-center py-8 border border-dashed border-white/10 rounded-xl">
                             <p className="text-gray-500 text-sm">
                                 No active Tailscale peers found.
                             </p>
@@ -232,11 +233,11 @@ export default function App() {
                     ) : (
                         peers.map((peer, i) => (
                             <div key={i} className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center justify-between hover:bg-white/10 transition-colors">
-                                <div>
-                                    <p className="font-bold text-white text-sm">{peer.HostName}</p>
+                                <div className="overflow-hidden">
+                                    <p className="font-bold text-white text-sm truncate">{peer.HostName}</p>
                                     <p className="text-xs text-gray-500 font-mono mt-1">{peer.TailscaleIPs[0]}</p>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 flex-shrink-0">
                                     <button 
                                         onClick={() => { navigator.clipboard.writeText(peer.TailscaleIPs[0]); }}
                                         className="p-1.5 bg-black/50 rounded-lg text-gray-400 hover:text-white"

@@ -2,15 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content, maximum-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>SheiyuWatch - Desktop</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      // Polyfill globals for simple-peer in Electron environment
       if (typeof global === 'undefined') {
         var global = window;
       }
-      // Simple Buffer polyfill if needed, though 'buffer' package is better
     </script>
     <script>
       tailwind.config = {
@@ -51,7 +49,9 @@
       body {
         background-color: #000000;
         color: #ffffff;
-        overflow: hidden;
+        /* FIXED: Changed from hidden to auto so you can scroll on mobile */
+        overflow-y: auto; 
+        overflow-x: hidden;
       }
       /* Custom scrollbar */
       ::-webkit-scrollbar {
