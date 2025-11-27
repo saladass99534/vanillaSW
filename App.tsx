@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { HostRoom } from './components/HostRoom';
 import { ViewerRoom } from './components/ViewerRoom';
-import { TitleBar } from './components/TitleBar';
 import { AppMode } from './types';
 import { Users, ShieldCheck, Zap, ArrowRight, Globe, RefreshCw, Network } from 'lucide-react';
 
@@ -79,7 +78,7 @@ const LandingPage: React.FC<{
   peers: any[];
   mousePos: { x: number; y: number };
 }> = ({ setMode, electronAvailable, scanNetwork, scanning, peers, mousePos }) => (
-  <div className="min-h-screen bg-black text-white selection:bg-blue-500/30 font-sans overflow-x-hidden relative flex flex-col">
+  <div className="h-screen bg-black text-white selection:bg-blue-500/30 font-sans overflow-x-hidden overflow-y-auto md:overflow-hidden relative flex flex-col">
     {/* --- LIVING BACKGROUND --- */}
     <div className="fixed inset-0 z-0 pointer-events-none">
        <div 
@@ -94,9 +93,9 @@ const LandingPage: React.FC<{
        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_70%,transparent_100%)]"></div>
     </div>
 
-    <div className={`relative z-10 max-w-7xl mx-auto px-6 w-full flex-grow flex flex-col ${electronAvailable ? 'pt-12' : 'pt-8'}`}>
+    <div className="relative z-10 max-w-7xl mx-auto px-6 w-full flex-grow flex flex-col">
       {/* Navbar */}
-      <div className="w-full flex justify-between items-center">
+      <div className="w-full flex justify-between items-center pt-4">
          <div className="flex gap-6 text-sm text-gray-400 font-mono uppercase tracking-widest">
             <span className="hover:text-white transition-colors cursor-pointer">Protocol v2.1</span>
          </div>
@@ -106,9 +105,9 @@ const LandingPage: React.FC<{
          </div>
       </div>
 
-      <main className="flex-grow flex flex-col items-center justify-center py-8">
+      <main className="flex-grow flex flex-col items-center justify-center gap-12">
           {/* HERO */}
-          <div className="text-center max-w-5xl mx-auto relative mb-12">
+          <div className="text-center max-w-5xl mx-auto relative">
              <div className="relative inline-block mb-6 group cursor-default">
                 <div className="absolute inset-0 bg-blue-600/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
                 <h1 className="text-5xl sm:text-7xl md:text-9xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-gray-500 drop-shadow-2xl leading-tight">
@@ -126,8 +125,8 @@ const LandingPage: React.FC<{
           </div>
 
           {/* CARDS */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-              <div className={`min-h-[280px] md:min-h-[350px] ${!electronAvailable ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl h-[320px]">
+              <div className={`${!electronAvailable ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
                 <TiltCard onClick={() => electronAvailable && setMode(AppMode.HOST)} accentColor="#3b82f6">
                    <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/5 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 border border-blue-500/20">
                       <Zap className="text-blue-400 w-8 h-8" />
@@ -139,7 +138,7 @@ const LandingPage: React.FC<{
                    </div>
                 </TiltCard>
               </div>
-              <div className="min-h-[280px] md:min-h-[350px]">
+              <div>
                 <TiltCard onClick={() => setMode(AppMode.VIEWER)} accentColor="#a855f7">
                    <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/5 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 border border-purple-500/20">
                       <Users className="text-purple-400 w-8 h-8" />
@@ -200,10 +199,6 @@ export default function App() {
   const [peers, setPeers] = useState<any[]>([]);
   const [scanning, setScanning] = useState(false);
   
-  const [isTitleBarVisible, setIsTitleBarVisible] = useState(false);
-  const [windowState, setWindowState] = useState({ isMaximized: true, isFullscreen: false });
-  const titleBarTimeoutRef = useRef<number | null>(null);
-  
   const electronAvailable = typeof window !== 'undefined' && window.electron !== undefined;
 
   useEffect(() => {
@@ -216,9 +211,6 @@ export default function App() {
     
     if (electronAvailable) {
         scanNetwork();
-        window.electron.onWindowState(setState => {
-          setWindowState(setState);
-        });
     }
 
     return () => window.removeEventListener('mousemove', handleGlobalMouseMove);
@@ -241,19 +233,6 @@ export default function App() {
       } finally {
           setScanning(false);
       }
-  };
-  
-  const handleTitleBarEnter = () => {
-    if (titleBarTimeoutRef.current) {
-        clearTimeout(titleBarTimeoutRef.current);
-    }
-    setIsTitleBarVisible(true);
-  };
-
-  const handleTitleBarLeave = () => {
-      titleBarTimeoutRef.current = window.setTimeout(() => {
-          setIsTitleBarVisible(false);
-      }, 300);
   };
 
   const renderContent = () => {
@@ -278,17 +257,6 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen bg-black">
-      {electronAvailable && (
-        <div 
-            onMouseEnter={handleTitleBarEnter} 
-            onMouseLeave={handleTitleBarLeave} 
-            className="fixed top-0 left-0 right-0 h-8 z-[9999]"
-        >
-            <div className={`transition-opacity duration-300 ${isTitleBarVisible && !windowState.isFullscreen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-              <TitleBar isMaximized={windowState.isMaximized} />
-            </div>
-        </div>
-      )}
       <div className={`h-full w-full ${electronAvailable ? 'pt-8' : ''}`}>
         {renderContent()}
       </div>

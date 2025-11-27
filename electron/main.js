@@ -48,9 +48,9 @@ function createWindow() {
     height: 720,
     minWidth: 940,
     minHeight: 560,
-    fullscreen: false, // Start in windowed mode
-    frame: false,      // Borderless
-    titleBarStyle: 'hidden',
+    frame: true,      // Use native frame
+    titleBarStyle: 'hidden', // Hide default title bar but keep controls
+    titleBarOverlay: true, // Make controls float over content
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -64,8 +64,6 @@ function createWindow() {
     title: "SheiyuWatch"
   });
 
-  mainWindow.maximize(); // Maximize the borderless window
-
   const isDev = process.env.npm_lifecycle_event === 'electron:dev';
   
   if (isDev) {
@@ -74,31 +72,14 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
-  
-  // Send window state changes to renderer
-  const sendWindowState = () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('window:state', {
-            isMaximized: mainWindow.isMaximized(),
-            isFullscreen: mainWindow.isFullScreen(),
-        });
-    }
-  };
-    
-  mainWindow.on('maximize', sendWindowState);
-  mainWindow.on('unmaximize', sendWindowState);
-  mainWindow.on('enter-full-screen', sendWindowState);
-  mainWindow.on('leave-full-screen', sendWindowState);
-  
-  // Initial state send
-  mainWindow.webContents.on('did-finish-load', sendWindowState);
 }
 
 app.whenReady().then(() => {
   createWindow();
 
-  // Register F11 to toggle between maximized and restored states.
-  // This avoids native fullscreen which can cause stream capture issues.
+  // F11 toggles between maximized and restored states.
+  // This provides a "fullscreen" feel without using exclusive fullscreen,
+  // which prevents the OS from freezing streams from backgrounded windows.
   globalShortcut.register('F11', () => {
     if (mainWindow) {
       if (mainWindow.isMaximized()) {
@@ -107,23 +88,6 @@ app.whenReady().then(() => {
         mainWindow.maximize();
       }
     }
-  });
-  
-  // --- Window Controls IPC ---
-  ipcMain.on('window:minimize', () => {
-    mainWindow.minimize();
-  });
-  
-  ipcMain.on('window:maximize', () => {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow.maximize();
-    }
-  });
-
-  ipcMain.on('window:close', () => {
-    mainWindow.close();
   });
 
   app.on('activate', function () {
@@ -142,6 +106,25 @@ app.on('window-all-closed', function () {
 });
 
 // --- IPC Handlers ---
+
+// Fix: Add IPC handlers for window controls
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) mainWindow.close();
+});
 
 // Toggle Web Server
 ipcMain.on('toggle-web-server', (event, enable) => {

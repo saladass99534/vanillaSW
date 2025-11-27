@@ -1,6 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
+  // Fix: Add window control methods
+  windowMinimize: () => ipcRenderer.send('window-minimize'),
+  windowMaximize: () => ipcRenderer.send('window-maximize'),
+  windowClose: () => ipcRenderer.send('window-close'),
+
   // System Info
   getTailscaleStatus: () => ipcRenderer.invoke('get-tailscale-status'),
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
@@ -8,15 +13,6 @@ contextBridge.exposeInMainWorld('electron', {
   // Web Server Toggle
   toggleWebServer: (enable) => ipcRenderer.send('toggle-web-server', enable),
   
-  // Window Controls
-  windowMinimize: () => ipcRenderer.send('window:minimize'),
-  windowMaximize: () => ipcRenderer.send('window:maximize'),
-  windowClose: () => ipcRenderer.send('window:close'),
-  onWindowState: (callback) => {
-    ipcRenderer.removeAllListeners('window:state');
-    ipcRenderer.on('window:state', (_, state) => callback(state));
-  },
-
   // Host Server Methods
   startHostServer: (port) => ipcRenderer.send('start-host-server', port),
   stopHostServer: () => ipcRenderer.send('stop-host-server'), // New method

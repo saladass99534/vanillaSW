@@ -80,16 +80,14 @@ export interface FloatingEmoji {
 declare global {
   interface Window {
     electron: {
+// Fix: Add definitions for window control methods
+      windowMinimize: () => void;
+      windowMaximize: () => void;
+      windowClose: () => void;
       getTailscaleStatus: () => Promise<any>;
       getDesktopSources: () => Promise<DesktopSource[]>;
       
       toggleWebServer: (enable: boolean) => void;
-
-      // Window Controls
-      windowMinimize: () => void;
-      windowMaximize: () => void;
-      windowClose: () => void;
-      onWindowState: (cb: (state: { isMaximized: boolean; isFullscreen: boolean }) => void) => void;
 
       // Host Server Methods
       startHostServer: (port?: number) => void;
