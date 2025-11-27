@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -1172,7 +1173,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         </div>
       </div>
 
-      <div className={`bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 transition-all duration-500 ease-in-out rounded-3xl border ${activeTheme.border} ${activeTheme.glow} shadow-2xl ${sidebarCollapsed ? 'w-0 m-0 opacity-0 border-0 pointer-events-none' : 'w-auto md:w-80 mx-4 mb-4 md:m-4 opacity-100 border'}`}>
+      <div className={`bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-3xl border ${activeTheme.border} ${activeTheme.glow} shadow-2xl ${sidebarCollapsed ? 'w-0 m-0 opacity-0 border-0 pointer-events-none' : 'w-auto md:w-80 mx-4 mb-4 md:m-4 opacity-100 border'}`}>
            <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
                <div className="flex p-2 gap-2">
                    <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>

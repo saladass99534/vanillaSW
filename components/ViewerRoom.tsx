@@ -710,7 +710,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
 
       {/* CHAT/SIDEBAR - Switches to Overlay on Mobile Typing */}
       <div className={`
-          flex flex-col flex-1 md:flex-none min-h-0 transition-all duration-500 ease-in-out rounded-3xl shadow-2xl
+          flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-3xl shadow-2xl
           ${mobileTypingMode 
               ? 'absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/40 to-transparent m-0 border-none rounded-none pointer-events-none justify-end h-2/3' 
               : `bg-black/40 backdrop-blur-xl border ${activeTheme.border} ${activeTheme.glow} w-auto md:w-80 mx-4 mb-4 md:m-4`
