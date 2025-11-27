@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { Button } from './Button';
@@ -20,6 +21,64 @@ const THEMES: Record<string, { primary: string, glow: string, border: string, bg
   Romance: { primary: 'text-pink-400', glow: 'shadow-pink-500/50', border: 'border-pink-500/30', bg: 'bg-pink-500', accent: 'accent-pink-500' },
   Anime: { primary: 'text-purple-400', glow: 'shadow-purple-500/50', border: 'border-purple-500/30', bg: 'bg-purple-500', accent: 'accent-purple-500' },
   Thriller: { primary: 'text-emerald-400', glow: 'shadow-emerald-500/50', border: 'border-emerald-500/30', bg: 'bg-emerald-500', accent: 'accent-emerald-500' },
+};
+
+// Helper function to modify SDP for strict bitrate control (copied from HostRoom)
+const setVideoBitrate = (sdp: string, bitrate: number): string => {
+    if (bitrate <= 0) return sdp;
+
+    let sdpLines = sdp.split('\r\n');
+    let videoMLineIndex = -1;
+
+    for (let i = 0; i < sdpLines.length; i++) {
+        if (sdpLines[i].startsWith('m=video')) {
+            videoMLineIndex = i;
+            break;
+        }
+    }
+
+    if (videoMLineIndex === -1) {
+        return sdp;
+    }
+
+    let newSdpLines = sdpLines.filter(line => !line.startsWith('b=AS:'));
+    newSdpLines.splice(videoMLineIndex + 1, 0, `b=AS:${bitrate}`);
+    
+    let codecPayloadType = -1;
+    const codecRegex = /a=rtpmap:(\d+) (VP9|H264)\/90000/;
+    for (const line of newSdpLines) {
+        const match = line.match(codecRegex);
+        if (match) {
+            codecPayloadType = parseInt(match[1], 10);
+            if (line.includes('VP9')) break;
+        }
+    }
+    
+    if (codecPayloadType !== -1) {
+        let fmtpLineIndex = -1;
+        for (let i = 0; i < newSdpLines.length; i++) {
+            if (newSdpLines[i].startsWith(`a=fmtp:${codecPayloadType}`)) {
+                fmtpLineIndex = i;
+                break;
+            }
+        }
+        
+        const bitrateParams = `x-google-min-bitrate=${bitrate};x-google-start-bitrate=${bitrate};x-google-max-bitrate=${bitrate}`;
+
+        if (fmtpLineIndex !== -1) {
+            const existingLine = newSdpLines[fmtpLineIndex];
+            if (!existingLine.includes('x-google-min-bitrate')) {
+                 newSdpLines[fmtpLineIndex] = `${existingLine}; ${bitrateParams}`;
+            }
+        } else {
+            let rtpmapLineIndex = newSdpLines.findIndex(line => line.startsWith(`a=rtpmap:${codecPayloadType}`));
+            if(rtpmapLineIndex !== -1) {
+                newSdpLines.splice(rtpmapLineIndex + 1, 0, `a=fmtp:${codecPayloadType} ${bitrateParams}`);
+            }
+        }
+    }
+    
+    return newSdpLines.join('\r\n');
 };
 
 export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
@@ -67,6 +126,8 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatRef = useRef<ChatHandle>(null);
   const inputIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const enforcedBitrateRef = useRef<number>(0);
+  const lastStatsRef = useRef<{ timestamp: number; bytesReceived: number } | null>(null);
 
   const electronAvailable = typeof window !== 'undefined' && window.electron !== undefined;
   const activeTheme = THEMES[currentTheme] || THEMES['default'];
@@ -181,6 +242,9 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 });
 
                 p.on('signal', (data) => {
+                    if (data.type === 'answer' && enforcedBitrateRef.current > 0) {
+                        data.sdp = setVideoBitrate(data.sdp!, enforcedBitrateRef.current);
+                    }
                     const signalPayload = { type: 'signal', data };
                     if (electronAvailable) {
                         window.electron.guestSendSignal(signalPayload);
@@ -231,11 +295,16 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                             setCurrentTheme(msg.payload);
                         }
 
+                        if (msg.type === 'bitrate_sync') {
+                            enforcedBitrateRef.current = msg.payload;
+                        }
+
                         if (msg.type === 'stream_stopped') {
                             setHasStream(false);
                             setIsPlaying(false);
                             if (videoRef.current) videoRef.current.srcObject = null;
                             if (ambilightRef.current) ambilightRef.current.srcObject = null;
+                            lastStatsRef.current = null;
                         }
                     } catch (e) { console.error("Parse error", e); }
                 });
@@ -271,10 +340,23 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                       reports.forEach((report: any) => {
                           if (report.type === 'inbound-rtp' && report.kind === 'video') {
                               if (videoRef.current) {
+                                  if (lastStatsRef.current) {
+                                      const bytesSinceLast = report.bytesReceived - lastStatsRef.current.bytesReceived;
+                                      const timeSinceLast = report.timestamp - lastStatsRef.current.timestamp;
+                                      if (timeSinceLast > 0) {
+                                          const bitrate = Math.round((bytesSinceLast * 8) / timeSinceLast); // kbps
+                                          setStats(prev => ({ ...prev, bitrate: `${(bitrate / 1000).toFixed(1)} Mbps` }));
+                                      }
+                                  }
+                                  lastStatsRef.current = {
+                                      timestamp: report.timestamp,
+                                      bytesReceived: report.bytesReceived,
+                                  };
+
                                   setStats(prev => ({
                                       ...prev,
                                       resolution: `${videoRef.current?.videoWidth}x${videoRef.current?.videoHeight}`,
-                                      fps: report.framesPerSecond || 60,
+                                      fps: report.framesPerSecond || 0,
                                       packetLoss: report.packetsLost ? `${report.packetsLost}` : '0'
                                   }));
                               }
@@ -291,6 +373,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
           }, 1000);
       } else {
           if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+          lastStatsRef.current = null;
       }
       return () => {
           if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
@@ -609,6 +692,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                         <span>Resolution:</span> <span className="text-white">{stats.resolution}</span>
                         <span>FPS:</span> <span className="text-white">{Math.round(stats.fps)}</span>
+                        <span>Bitrate:</span> <span className="text-green-400">{stats.bitrate}</span>
                         <span>Latency:</span> <span className="text-yellow-400">{stats.latency}</span>
                         <span>Packet Loss:</span> <span className="text-red-400">{stats.packetLoss}</span>
                     </div>

@@ -161,6 +161,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [streamQuality, setStreamQuality] = useState<'1080p' | '1440p' | '4k'>('1080p');
   const [streamFps, setStreamFps] = useState<30 | 60>(60);
   const [streamBitrate, setStreamBitrate] = useState<number>(0); // 0 for automatic, in kbps
+  const streamBitrateRef = useRef(streamBitrate);
+  useEffect(() => { streamBitrateRef.current = streamBitrate; }, [streamBitrate]);
   const [showAudioHelp, setShowAudioHelp] = useState(false);
 
   // Media State
@@ -184,6 +186,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatRef = useRef<ChatHandle>(null);
+  const lastStatsRef = useRef<{ timestamp: number; bytesSent: number } | null>(null);
 
   // Safety Check
   const electronAvailable = typeof window !== 'undefined' && window.electron !== undefined;
@@ -359,16 +362,18 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         });
 
         p.on('signal', (data) => {
-            if (data.type === 'offer' && streamBitrate > 0) {
-                data.sdp = setVideoBitrate(data.sdp, streamBitrate);
+            if (data.type === 'offer' && streamBitrateRef.current > 0) {
+                data.sdp = setVideoBitrate(data.sdp!, streamBitrateRef.current);
             }
             window.electron.hostSendSignal(socketId, { type: 'signal', data });
         });
 
         p.on('connect', () => {
             sendDataToPeer(p, { type: 'members', payload: members });
-            // Sync theme on connect
             sendDataToPeer(p, { type: 'theme_change', payload: currentTheme });
+            if (streamRef.current) {
+                sendDataToPeer(p, { type: 'bitrate_sync', payload: streamBitrateRef.current });
+            }
         });
 
         p.on('data', (data) => {
@@ -399,7 +404,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         window.electron.removeAllListeners('host-signal-received');
         window.electron.removeAllListeners('host-client-disconnected');
     };
-  }, [members, username, electronAvailable, currentTheme, streamBitrate]);
+  }, [members, username, electronAvailable, currentTheme]);
 
   // Nerd Stats Logic
   useEffect(() => {
@@ -412,18 +417,30 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                       reports.forEach((report: any) => {
                           if (report.type === 'outbound-rtp' && report.kind === 'video') {
                               if (videoRef.current) {
-                                setStats(prev => ({
-                                    ...prev,
-                                    resolution: `${videoRef.current?.videoWidth}x${videoRef.current?.videoHeight}`,
-                                    fps: report.framesPerSecond || 60,
-                                }));
+                                  if (lastStatsRef.current) {
+                                      const bytesSinceLast = report.bytesSent - lastStatsRef.current.bytesSent;
+                                      const timeSinceLast = report.timestamp - lastStatsRef.current.timestamp;
+                                      if (timeSinceLast > 0) {
+                                          const bitrate = Math.round((bytesSinceLast * 8) / timeSinceLast); // This will be in kbps because timestamp is in ms
+                                          setStats(prev => ({ ...prev, bitrate: `${(bitrate / 1000).toFixed(1)} Mbps` }));
+                                      }
+                                  }
+                                  lastStatsRef.current = {
+                                      timestamp: report.timestamp,
+                                      bytesSent: report.bytesSent,
+                                  };
+
+                                  setStats(prev => ({
+                                      ...prev,
+                                      resolution: `${videoRef.current?.videoWidth}x${videoRef.current?.videoHeight}`,
+                                      fps: report.framesPerSecond || 0,
+                                  }));
                               }
                           }
                           if (report.type === 'candidate-pair' && report.state === 'succeeded') {
                               setStats(prev => ({
                                   ...prev,
-                                  latency: `${Math.round(report.currentRoundTripTime * 1000)} ms`,
-                                  bitrate: `${(report.availableOutgoingBitrate / 1000000).toFixed(1)} Mbps` 
+                                  latency: `${Math.round(report.currentRoundTripTime * 1000)} ms`
                               }));
                           }
                       });
@@ -432,6 +449,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           }, 1000);
       } else {
           if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+          lastStatsRef.current = null;
       }
       return () => {
           if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
@@ -492,7 +510,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             });
             // Send current theme to new joiner
             const p = peersRef.current.get(socketId);
-            if (p) sendDataToPeer(p, { type: 'theme_change', payload: currentTheme });
+            if (p) {
+                sendDataToPeer(p, { type: 'theme_change', payload: currentTheme });
+                if(streamRef.current) sendDataToPeer(p, { type: 'bitrate_sync', payload: streamBitrateRef.current });
+            }
         }
 
         if (parsed.type === 'chat') {
@@ -619,6 +640,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           }
 
           streamRef.current = finalStream;
+          broadcast({ type: 'bitrate_sync', payload: streamBitrate });
           setIsSharing(true);
 
           peersRef.current.forEach(p => {
@@ -642,6 +664,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       if (videoRef.current) videoRef.current.srcObject = null;
       if (ambilightRef.current) ambilightRef.current.srcObject = null;
       setIsSharing(false);
+      lastStatsRef.current = null;
   };
 
   const toggleMute = () => {
@@ -1123,12 +1146,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
                 {showNerdStats && (
                     <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
-                        <h4 className={`${activeTheme.primary} font-bold mb-1 flex items-center gap-1`}><Activity size={10}/> STREAM STATS</h4>
+                        <h4 className={`${activeTheme.primary} font-bold mb-1 flex items-center gap-1`}><Activity size={10}/> STREAM STATS (SEND)</h4>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                             <span>Resolution:</span> <span className="text-white">{stats.resolution}</span>
                             <span>FPS:</span> <span className="text-white">{Math.round(stats.fps)}</span>
                             <span>Bitrate:</span> <span className="text-green-400">{stats.bitrate}</span>
-                            <span>Packet Loss:</span> <span className="text-white">{stats.packetLoss}</span>
+                            <span>Latency:</span> <span className="text-yellow-400">{stats.latency}</span>
                         </div>
                     </div>
                 )}
