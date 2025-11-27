@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { Button } from './Button';
@@ -55,6 +54,9 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   
   const [stats, setStats] = useState<StreamStats>({ resolution: 'N/A', bitrate: '0', fps: 0, packetLoss: '0', latency: '0' });
   
+  // Stream Key to force re-render on new stream
+  const [streamKey, setStreamKey] = useState(0);
+
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
 
   const peerRef = useRef<SimplePeer.Instance | null>(null);
@@ -124,7 +126,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   // Force play when stream becomes active to prevent black screen
   useEffect(() => {
       if (hasStream && videoRef.current) {
-          // Small timeout to ensure element is ready
           const timer = setTimeout(() => {
               if (videoRef.current) {
                   videoRef.current.play().catch(e => console.log("Autoplay check blocked:", e));
@@ -133,7 +134,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
           }, 100);
           return () => clearTimeout(timer);
       }
-  }, [hasStream]);
+  }, [hasStream, streamKey]);
 
   const connectToHost = () => {
       if (!hostIpInput) return;
@@ -209,16 +210,22 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 });
 
                 p.on('stream', (stream) => {
-                    if (videoRef.current) {
-                        videoRef.current.srcObject = stream;
-                        videoRef.current.volume = volume; // Ensure initial volume is set
-                        videoRef.current.play().then(() => setIsPlaying(true)).catch(e => console.log("Autoplay blocked", e));
-                        setHasStream(true);
-                    }
-                    if (ambilightRef.current) {
-                        ambilightRef.current.srcObject = stream;
-                        ambilightRef.current.play().catch(() => {});
-                    }
+                    // Increment stream key to force re-mount of video player
+                    setStreamKey(prev => prev + 1);
+                    setHasStream(true);
+                    
+                    // Defer attachment slightly to let React re-mount
+                    setTimeout(() => {
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = stream;
+                            videoRef.current.volume = volume; 
+                            videoRef.current.play().then(() => setIsPlaying(true)).catch(e => console.log("Autoplay blocked", e));
+                        }
+                        if (ambilightRef.current) {
+                            ambilightRef.current.srcObject = stream;
+                            ambilightRef.current.play().catch(() => {});
+                        }
+                    }, 50);
                 });
 
                 p.on('data', (data) => {
@@ -637,10 +644,15 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
           )}
 
           <video 
-            ref={videoRef} 
+            ref={videoRef}
+            key={streamKey} // Force re-render on new stream to prevent black screen
             className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} 
             autoPlay 
             playsInline 
+            onCanPlay={() => {
+                // Ensure it plays immediately
+                videoRef.current?.play().then(() => setIsPlaying(true)).catch(() => {});
+            }}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
           />

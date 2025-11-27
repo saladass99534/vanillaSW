@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -251,15 +250,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       fetchAudioDevices();
   }, [showSourceSelector]);
 
-  // Update default audio capture based on source type
+  // Default to system audio if in screen mode, but allow user to change it freely in window mode
   useEffect(() => {
       if (sourceTab === 'screen') {
           setAudioSource('system');
-      } else {
-          // On Mac, window audio capture is tricky, but user wants option available.
-          // Defaulting to none to avoid permissions errors immediately, but user can change it.
-          setAudioSource('none'); 
       }
+      // Removed the 'else' block that forced 'none' for window mode to allow user override
   }, [sourceTab]);
 
   useEffect(() => {
@@ -882,8 +878,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                     onClick={() => setSelectedSourceId(source.id)}
                                     className={`group relative rounded-xl overflow-hidden border-2 transition-all ${selectedSourceId === source.id ? `${activeTheme.border} ring-2 ring-opacity-30 bg-white/5` : 'border-white/5 hover:border-white/20 bg-[#2b2d31]'}`}
                                 >
-                                    <div className="h-32 bg-black/50 relative flex items-center justify-center p-2">
-                                        <img src={source.thumbnail} alt={source.name} className="max-w-full max-h-full object-contain shadow-md" />
+                                    <div className="h-32 flex items-center justify-center p-2 bg-black/20">
+                                        <img src={source.thumbnail} alt={source.name} className="w-auto h-full max-w-full object-contain shadow-md" />
                                         {selectedSourceId === source.id && (
                                             <div className={`absolute inset-0 bg-black/20 flex items-center justify-center`}>
                                                 <div className={`${activeTheme.bg} rounded-full p-2 shadow-lg`}><Check size={20} className="text-white" /></div>
