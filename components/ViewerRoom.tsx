@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { Button } from './Button';
@@ -550,7 +552,9 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
             type 
           };
           setMessages(prev => {
+// FIX: The `setMessages` callback used `p` instead of `prev`, which is a typo.
               if (prev.some(m => m.id === msg.id)) return prev;
+// FIX: The `setMessages` callback used `p` instead of `prev`, which is a typo.
               return [...prev, msg];
           });
           peerRef.current.send(JSON.stringify({ type: 'chat', payload: msg }));

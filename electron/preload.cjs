@@ -1,4 +1,3 @@
-
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
@@ -16,7 +15,9 @@ contextBridge.exposeInMainWorld('electron', {
   onHostClientConnected: (cb) => ipcRenderer.on('host-client-connected', (e, ...args) => cb(...args)),
   onHostClientDisconnected: (cb) => ipcRenderer.on('host-client-disconnected', (e, ...args) => cb(...args)),
   onHostSignalReceived: (cb) => ipcRenderer.on('host-signal-received', (e, ...args) => cb(...args)),
-  // FIXED: Arguments must be wrapped in a single object to match the main process handler.
+  
+  // FIXED: Arguments are wrapped in a single object to match the main process handler.
+  // This was the cause of the desktop signaling failure.
   hostSendSignal: (socketId, data) => ipcRenderer.send('host-send-signal', { socketId, data }),
 
   // Guest-side logic

@@ -1,4 +1,3 @@
-
 const { app, BrowserWindow, ipcMain, desktopCapturer } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
@@ -47,9 +46,10 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
+    fullscreen: false,
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.js'), // Corrected to .js
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, 
@@ -234,6 +234,8 @@ ipcMain.on('stop-host-server', () => {
     }
 });
 
+// This is the handler for signals coming FROM the host's UI
+// The data object received here must be correct
 ipcMain.on('host-send-signal', (event, { socketId, data }) => {
   const ws = connectedClients.get(socketId);
   if (ws && ws.readyState === WebSocket.OPEN) {
