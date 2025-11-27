@@ -6,6 +6,7 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [react()],
   base: './', // Important for Electron relative paths
+  publicDir: 'assets',
   resolve: {
     alias: {
       process: "process/browser",
