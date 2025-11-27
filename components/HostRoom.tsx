@@ -634,6 +634,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   };
 
   const handlePickerInteraction = (action: string, value?: string) => {
+      // Allow viewers to initiate
+      if (action === 'start_picker') {
+          startSharedPicker();
+          return;
+      }
+      
       const msgId = Date.now().toString();
       let payload: any = {};
 
@@ -976,6 +982,32 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             </div>
           )}
 
+          {/* FLOATING EMOJIS */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
+              {floatingEmojis.map(emoji => (
+                  <div 
+                      key={emoji.id}
+                      className="absolute bottom-0 text-6xl animate-float"
+                      style={{
+                          left: `${emoji.x}%`,
+                          animationDuration: `${emoji.animationDuration}s`,
+                          filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
+                          transform: 'perspective(500px) rotateX(10deg)'
+                      }}
+                  >
+                      {emoji.emoji}
+                  </div>
+              ))}
+              <style>{`
+                  @keyframes float {
+                      0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
+                      10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
+                      100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
+                  }
+                  .animate-float { animation-name: float; animation-timing-function: ease-out; }
+              `}</style>
+          </div>
+
           {!isSharing ? (
             <div className="text-center relative z-10">
                 <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
@@ -994,32 +1026,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                     className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60 pointer-events-none"
                     muted
                 />
-
-                {/* FLOATING EMOJIS */}
-                <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
-                    {floatingEmojis.map(emoji => (
-                        <div 
-                            key={emoji.id}
-                            className="absolute bottom-0 text-6xl animate-float"
-                            style={{
-                                left: `${emoji.x}%`,
-                                animationDuration: `${emoji.animationDuration}s`,
-                                filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
-                                transform: 'perspective(500px) rotateX(10deg)'
-                            }}
-                        >
-                            {emoji.emoji}
-                        </div>
-                    ))}
-                    <style>{`
-                        @keyframes float {
-                            0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
-                            10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
-                            100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
-                        }
-                        .animate-float { animation-name: float; animation-timing-function: ease-out; }
-                    `}</style>
-                </div>
 
                 {showNerdStats && (
                     <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
@@ -1102,9 +1108,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                      </button>
                      <button 
                         onClick={startSharedPicker} 
-                        disabled={isSharing || (pickerStep !== 'idle' && pickerStep !== 'reveal')}
-                        className={`p-2.5 rounded-full transition-all active:scale-95 ${isSharing || (pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'bg-white/5 text-gray-600 cursor-not-allowed' : `${activeTheme.primary} bg-white/5 hover:bg-white/10 hover:${activeTheme.primary.replace('text-', 'text-opacity-80')}`}`}
-                        title={isSharing ? "Stop sharing to pick a movie" : "Suggest Movie"}
+                        disabled={pickerStep !== 'idle' && pickerStep !== 'reveal'}
+                        className={`p-2.5 rounded-full transition-all active:scale-95 ${pickerStep !== 'idle' && pickerStep !== 'reveal' ? 'bg-white/5 text-gray-600 cursor-not-allowed' : `${activeTheme.primary} bg-white/5 hover:bg-white/10 hover:${activeTheme.primary.replace('text-', 'text-opacity-80')}`}`}
+                        title={"Suggest Movie"}
                      >
                          <Clapperboard size={18} />
                      </button>
@@ -1169,7 +1175,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                    <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>
                    <button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'members' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>MEMBERS</button>
                </div>
-               <div className="flex-1 overflow-hidden relative">
+               <div className="flex-1 relative min-h-0">
                    {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleHypeAction} onPickerAction={handlePickerInteraction} myId="HOST" theme={activeTheme} /></div>}
                    {activeTab === 'members' && (
                        <div className="p-4 space-y-2">

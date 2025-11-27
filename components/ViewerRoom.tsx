@@ -3,7 +3,7 @@ import SimplePeer from 'simple-peer';
 import { Button } from './Button';
 import { Chat, ChatHandle } from './Chat';
 import { ChatMessage, generateRandomName, Member, ReplyContext, StreamStats, FloatingEmoji } from '../types';
-import { Wifi, WifiOff, Tv, MessageSquare, Users, Crown, Clock, X, RefreshCw, Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, AlertCircle, Activity, Minimize, Sliders, PictureInPicture } from 'lucide-react';
+import { Wifi, WifiOff, Tv, MessageSquare, Users, Crown, Clock, X, RefreshCw, Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, AlertCircle, Activity, Minimize, Sliders, PictureInPicture, Clapperboard } from 'lucide-react';
 
 interface ViewerRoomProps {
   onBack: () => void;
@@ -536,6 +536,10 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   // Dynamic height style for mobile viewport responsiveness
   const containerStyle = isMobile ? { height: `${viewportHeight}px` } : {};
 
+  // Check if movie picker is active
+  const lastSystemMessage = [...messages].reverse().find(m => m.isSystemEvent && m.eventPayload);
+  const pickerIsActive = lastSystemMessage?.eventPayload?.state === 'type_selection' || lastSystemMessage?.eventPayload?.state === 'genre_selection';
+
   return (
     <div style={containerStyle} className="flex flex-col md:flex-row h-[100dvh] bg-[#313338] text-gray-100 overflow-hidden font-sans relative transition-colors duration-500">
       
@@ -703,6 +707,14 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                  <div className="w-px h-6 bg-white/10"></div>
 
                  <div className="flex gap-2 items-center">
+                     <button
+                        onClick={() => handlePickerAction('start_picker')}
+                        disabled={pickerIsActive}
+                        className={`p-2 rounded-full transition-colors active:scale-95 ${pickerIsActive ? 'text-gray-600 cursor-not-allowed' : `hover:bg-white/10 ${activeTheme.primary}`}`}
+                        title="Suggest Movie"
+                     >
+                         <Clapperboard size={18} />
+                     </button>
                      <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${showNerdStats ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Nerd Stats">
                          <Activity size={18} />
                      </button>
@@ -723,7 +735,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
 
       {/* CHAT/SIDEBAR - Switches to Overlay on Mobile Typing */}
       <div className={`
-          flex flex-col flex-1 md:flex-none min-h-0 transition-all duration-500 ease-in-out rounded-3xl shadow-2xl overflow-hidden
+          flex flex-col flex-1 md:flex-none min-h-0 transition-all duration-500 ease-in-out rounded-3xl shadow-2xl
           ${mobileTypingMode 
               ? 'absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/40 to-transparent m-0 border-none rounded-none pointer-events-none justify-end h-2/3' 
               : `bg-black/40 backdrop-blur-xl border ${activeTheme.border} ${activeTheme.glow} w-auto md:w-80 mx-4 mb-4 md:m-4` // Changed w-full to w-auto for mobile fix
@@ -736,7 +748,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                    <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>
                    <button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'members' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>MEMBERS</button>
                </div>
-               <div className={`flex-1 overflow-hidden relative ${mobileTypingMode ? 'pointer-events-auto' : ''} min-h-0`}>
+               <div className={`flex-1 relative ${mobileTypingMode ? 'pointer-events-auto' : ''} min-h-0`}>
                    {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col min-h-0"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
                    {activeTab === 'members' && (
                        <div className="p-4 space-y-2">

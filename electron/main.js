@@ -97,10 +97,15 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  // Register F11 to toggle fullscreen
+  // Register F11 to toggle between maximized and restored states.
+  // This avoids native fullscreen which can cause stream capture issues.
   globalShortcut.register('F11', () => {
     if (mainWindow) {
-      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      } else {
+        mainWindow.maximize();
+      }
     }
   });
   
