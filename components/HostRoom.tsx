@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -28,6 +27,36 @@ const THEMES: Record<string, { primary: string, glow: string, border: string, bg
   Romance: { primary: 'text-pink-400', glow: 'shadow-pink-500/50', border: 'border-pink-500/30', bg: 'bg-pink-500', accent: 'accent-pink-500' },
   Anime: { primary: 'text-purple-400', glow: 'shadow-purple-500/50', border: 'border-purple-500/30', bg: 'bg-purple-500', accent: 'accent-purple-500' },
   Thriller: { primary: 'text-emerald-400', glow: 'shadow-emerald-500/50', border: 'border-emerald-500/30', bg: 'bg-emerald-500', accent: 'accent-emerald-500' },
+};
+
+// Helper function to modify SDP for bitrate control
+const setVideoBitrate = (sdp: string, bitrate: number): string => {
+    if (bitrate <= 0) return sdp; // Do nothing if bitrate is automatic
+
+    let sdpLines = sdp.split('\r\n');
+    let videoMLineIndex = -1;
+
+    // Find the `m=video` line
+    for (let i = 0; i < sdpLines.length; i++) {
+        if (sdpLines[i].startsWith('m=video')) {
+            videoMLineIndex = i;
+            break;
+        }
+    }
+
+    if (videoMLineIndex === -1) {
+        console.warn('Could not find m=video line in SDP');
+        return sdp;
+    }
+
+    // Check if b=AS already exists and remove it to avoid duplicates
+    sdpLines = sdpLines.filter(line => !line.startsWith('b=AS:'));
+
+    // Add the bitrate control line right after the `m=video` line
+    // The bitrate is in kbps, so we don't need to divide by 1000.
+    sdpLines.splice(videoMLineIndex + 1, 0, `b=AS:${bitrate}`);
+    
+    return sdpLines.join('\r\n');
 };
 
 export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
@@ -86,6 +115,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [audioSource, setAudioSource] = useState<string>('system'); 
   const [streamQuality, setStreamQuality] = useState<'1080p' | '1440p' | '4k'>('1080p');
   const [streamFps, setStreamFps] = useState<30 | 60>(60);
+  const [streamBitrate, setStreamBitrate] = useState<number>(0); // 0 for automatic, in kbps
   const [showAudioHelp, setShowAudioHelp] = useState(false);
 
   // Media State
@@ -284,6 +314,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         });
 
         p.on('signal', (data) => {
+            if (data.type === 'offer' && streamBitrate > 0) {
+                data.sdp = setVideoBitrate(data.sdp, streamBitrate);
+            }
             window.electron.hostSendSignal(socketId, { type: 'signal', data });
         });
 
@@ -321,7 +354,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         window.electron.removeAllListeners('host-signal-received');
         window.electron.removeAllListeners('host-client-disconnected');
     };
-  }, [members, username, electronAvailable, currentTheme]);
+  }, [members, username, electronAvailable, currentTheme, streamBitrate]);
 
   // Nerd Stats Logic
   useEffect(() => {
@@ -887,7 +920,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         <button onClick={() => setSourceTab('window')} className={`flex-1 py-2 rounded-md text-sm font-bold transition-colors ${sourceTab === 'window' ? `${activeTheme.bg} text-white shadow-lg` : 'text-gray-400 hover:text-white'}`}>Windows</button>
                     </div>
 
-                    <div className="p-6 flex gap-4 overflow-x-auto min-h-0 flex-1">
+                    <div className="p-6 flex gap-4 overflow-x-auto min-h-0 flex-1 scrollbar-hide">
                         {isRefreshingSources ? (
                             <div className="w-full py-20 flex flex-col items-center justify-center text-gray-500 animate-pulse">
                                 <RefreshCw className="animate-spin mb-2" size={32} />
@@ -955,6 +988,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                         <option value={60}>60 FPS (Silky Smooth)</option>
                                         <option value={30}>30 FPS (Standard)</option>
                                     </select>
+                                 </div>
+                                 <div className="flex items-center gap-2">
+                                     <label className="text-xs font-bold text-gray-400 w-24">Bitrate:</label>
+                                     <select
+                                         value={streamBitrate}
+                                         onChange={(e) => setStreamBitrate(Number(e.target.value))}
+                                         className="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:border-blue-500 outline-none cursor-pointer flex-1 max-w-[200px]"
+                                     >
+                                         <option value={0}>Automatic (Default)</option>
+                                         <option value={15000}>High (15 Mbps)</option>
+                                         <option value={30000}>Extreme (30 Mbps)</option>
+                                         <option value={50000}>Insane (50 Mbps)</option>
+                                     </select>
                                  </div>
 
                                  <div className="flex items-center gap-2">
@@ -1112,8 +1158,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                      </button>
                      <button 
                         onClick={startSharedPicker} 
-                        disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')}
-                        className={`p-2.5 rounded-full transition-all active:scale-95 ${(pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'bg-white/5 text-gray-600 cursor-not-allowed' : `${activeTheme.primary} bg-white/5 hover:bg-white/10 hover:${activeTheme.primary.replace('text-', 'text-opacity-80')}`}`}
+                        disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal') || isSharing}
+                        className={`p-2.5 rounded-full transition-all active:scale-95 disabled:cursor-not-allowed disabled:text-gray-600 disabled:bg-white/5 ${ (pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'bg-white/5 text-gray-600' : `${activeTheme.primary} bg-white/5 hover:bg-white/10 hover:${activeTheme.primary.replace('text-', 'text-opacity-80')}`}`}
                         title="Suggest Movie"
                      >
                          <Clapperboard size={18} />
