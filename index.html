@@ -1,270 +1,90 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer } = require('electron');
-const path = require('path');
-const { exec } = require('child_process');
-const WebSocket = require('ws');
-const express = require('express');
-const http = require('http');
-
-// --- CRITICAL FIX 1: DISABLE WINDOWS "SLEEP" LOGIC ---
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-backgrounding-occluded-windows', 'true');
-// -----------------------------------------------------
-
-let mainWindow;
-let wss; 
-let guestWs; 
-const connectedClients = new Map(); 
-
-// --- WEB SERVER ---
-const expressApp = express();
-const httpServer = http.createServer(expressApp);
-const WEB_PORT = 8080;
-
-function startWebServer() {
-  const distPath = path.join(__dirname, '../dist');
-  expressApp.use(express.static(distPath));
-
-  expressApp.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
-
-  httpServer.listen(WEB_PORT, '0.0.0.0', () => {
-    console.log(`Web Server running at http://0.0.0.0:${WEB_PORT}`);
-  });
-  
-  httpServer.on('error', (e) => {
-      console.error("Web Server Error:", e);
-  });
-}
-
-function stopWebServer() {
-    if (httpServer.listening) {
-        httpServer.close(() => {
-            console.log('Web Server stopped');
-        });
-    }
-}
-
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 720,
-    fullscreen: false, 
-    show: false,       
-    
-    // --- CRITICAL FIX 2: THE LAYERED STRATEGY ---
-    // Instead of fading the whole app (opacity: 0.99), we use 'transparent: true'.
-    // This forces Windows DWM to render content behind this window.
-    transparent: true, 
-    
-    // Set startup color to fully transparent (#00000000) so there is no white flash.
-    // We will make it Solid Black via CSS in index.html.
-    backgroundColor: '#00000000', 
-    // --------------------------------------------
-
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: false, 
-      webSecurity: false,
-      
-      // --- CRITICAL FIX 3: DISABLE THROTTLING ---
-      backgroundThrottling: false
-    },
-    autoHideMenuBar: true,
-    title: "SheiyuWatch"
-  });
-
-  mainWindow.maximize();
-  mainWindow.show();
-
-  const isDev = process.env.npm_lifecycle_event === 'electron:dev';
-  
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>SheiyuWatch - Desktop</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      if (typeof global === 'undefined') {
+        var global = window;
+      }
+    </script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+            },
+            colors: {
+              gray: {
+                750: '#2d3748',
+                850: '#1a202c',
+                950: '#0d1117',
+              },
+            },
+            animation: {
+              'blob': 'blob 7s infinite',
+              'float': 'float 6s ease-in-out infinite',
+              'spin-slow': 'spin 15s linear infinite',
+            },
+            keyframes: {
+              blob: {
+                '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                '100%': { transform: 'translate(0px, 0px) scale(1)' },
+              },
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-20px)' },
+              }
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      body {
+        /* FIXED: Force solid black background so the app doesn't look transparent to the user */
+        background-color: #000000 !important; 
+        color: #ffffff;
+        overflow-y: auto; 
+        overflow-x: hidden;
+      }
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #000;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #333;
+        border-radius: 4px;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "path": "https://aistudiocdn.com/path@^0.12.7",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "peerjs": "https://aistudiocdn.com/peerjs@^1.5.5",
+    "simple-peer": "https://aistudiocdn.com/simple-peer@^9.11.1",
+    "buffer": "https://aistudiocdn.com/buffer@^6.0.3",
+    "process": "https://aistudiocdn.com/process@^0.11.10"
   }
 }
-
-app.whenReady().then(() => {
-  createWindow();
-
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
-
-app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') app.quit();
-});
-
-// --- IPC Handlers ---
-
-ipcMain.on('toggle-web-server', (event, enable) => {
-    if (enable) {
-        if (!httpServer.listening) startWebServer();
-    } else {
-        stopWebServer();
-    }
-});
-
-ipcMain.handle('get-tailscale-status', async () => {
-  return new Promise((resolve, reject) => {
-    const isMac = process.platform === 'darwin';
-    const possiblePaths = isMac ? [
-      '/Applications/Tailscale.app/Contents/MacOS/Tailscale', 
-      '/usr/local/bin/tailscale', 
-      '/opt/homebrew/bin/tailscale', 
-      'tailscale' 
-    ] : [
-      'tailscale', 
-      'C:\\Program Files\\Tailscale\\tailscale.exe' 
-    ];
-
-    const tryPath = (index) => {
-      if (index >= possiblePaths.length) {
-        console.warn("Tailscale binary not found in any known location.");
-        resolve({}); 
-        return;
-      }
-      const pathStr = possiblePaths[index];
-      const cmd = pathStr.includes(' ') ? `"${pathStr}"` : pathStr;
-      
-      exec(`${cmd} status --json`, (error, stdout, stderr) => {
-        if (!error && stdout) {
-          try {
-            const status = JSON.parse(stdout);
-            resolve(status);
-            return; 
-          } catch (e) { }
-        }
-        tryPath(index + 1);
-      });
-    };
-    tryPath(0);
-  });
-});
-
-ipcMain.handle('get-desktop-sources', async () => {
-  try {
-    const sources = await desktopCapturer.getSources({ 
-      types: ['window', 'screen'],
-      thumbnailSize: { width: 1920, height: 1080 }
-    });
-    return sources.map(source => ({
-      id: source.id,
-      name: source.name,
-      thumbnail: source.thumbnail.toDataURL()
-    }));
-  } catch (error) {
-    console.error("Error getting desktop sources:", error);
-    return [];
-  }
-});
-
-// --- HOST LOGIC ---
-
-ipcMain.on('start-host-server', (event, port) => {
-  try {
-    if (wss) {
-      wss.close();
-      connectedClients.clear();
-    }
-    wss = new WebSocket.Server({ port: port || 65432 });
-
-    wss.on('listening', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('host-server-started', { success: true, port: port || 65432 });
-      }
-    });
-
-    wss.on('connection', (ws) => {
-      const socketId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-      connectedClients.set(socketId, ws);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('host-client-connected', { socketId });
-      }
-
-      ws.on('message', (message) => {
-        try {
-          const parsed = JSON.parse(message);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('host-signal-received', { socketId, data: parsed });
-          }
-        } catch (e) { console.error("Error parsing message", e); }
-      });
-
-      ws.on('close', () => {
-        connectedClients.delete(socketId);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('host-client-disconnected', { socketId });
-        }
-      });
-    });
-
-    wss.on('error', (error) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('host-server-started', { success: false, error: error.message });
-      }
-    });
-
-  } catch (error) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('host-server-started', { success: false, error: error.message });
-    }
-  }
-});
-
-ipcMain.on('stop-host-server', () => {
-    if (wss) {
-        connectedClients.forEach((ws) => ws.terminate());
-        connectedClients.clear();
-        wss.close();
-        wss = null;
-    }
-});
-
-ipcMain.on('host-send-signal', (event, { socketId, data }) => {
-  const ws = connectedClients.get(socketId);
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(data));
-  }
-});
-
-// --- GUEST LOGIC ---
-
-ipcMain.on('connect-to-host', (event, ip, port) => {
-  if (guestWs) guestWs.terminate();
-  const url = `ws://${ip}:${port || 65432}`;
-
-  try {
-    guestWs = new WebSocket(url);
-    guestWs.on('open', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-connected');
-    });
-    guestWs.on('message', (data) => {
-      try {
-        const parsed = JSON.parse(data);
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-signal-received', parsed);
-      } catch (e) { }
-    });
-    guestWs.on('error', (err) => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-error', err.message);
-    });
-    guestWs.on('close', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-disconnected');
-    });
-  } catch (error) {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-error', error.message);
-  }
-});
-
-ipcMain.on('guest-send-signal', (event, data) => {
-  if (guestWs && guestWs.readyState === WebSocket.OPEN) {
-    guestWs.send(JSON.stringify(data));
-  }
-});
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
