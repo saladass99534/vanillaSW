@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer, globalShortcut } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const WebSocket = require('ws');
@@ -46,7 +46,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    fullscreen: false, // Changed from true to false for borderless mode
+    fullscreen: false, // Start in windowed mode
     frame: false,      // Borderless
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -61,7 +61,7 @@ function createWindow() {
     title: "SheiyuWatch"
   });
 
-  mainWindow.maximize(); // Maximize instead of fullscreen
+  mainWindow.maximize(); // Maximize the borderless window
 
   const isDev = process.env.npm_lifecycle_event === 'electron:dev';
   
@@ -76,10 +76,23 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
+  // Register F11 to toggle fullscreen
+  globalShortcut.register('F11', () => {
+    if (mainWindow) {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+    }
+  });
+
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+app.on('will-quit', () => {
+  // Unregister all shortcuts.
+  globalShortcut.unregisterAll();
+});
+
 
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();

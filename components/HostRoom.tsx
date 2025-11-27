@@ -478,6 +478,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           }
 
           const videoConstraints = {
+              googCpuOveruseDetection: false,
               mandatory: {
                   chromeMediaSource: 'desktop',
                   chromeMediaSourceId: sourceId,
@@ -520,7 +521,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                           echoCancellation: false,
                           noiseSuppression: false,
                           channelCount: 2, 
-                          latency: 0 
+                          latency: 0.01 
                       } as any,
                       video: false
                   });
