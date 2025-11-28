@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { Button } from './Button';
@@ -652,9 +651,16 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
       {/* Video Area - In mobile typing mode, it becomes the background */}
       <div className={`flex flex-col relative bg-black min-w-0 transition-all duration-500 ease-in-out ${sidebarCollapsed || mobileTypingMode ? 'w-full h-full' : 'w-full h-[35vh] min-h-[250px] md:h-full md:flex-1'} ${mobileTypingMode ? 'absolute inset-0 z-0' : 'sticky top-0 z-30 md:static'}`}>
         
-        {/* Top Bar */}
+        {/* Top Bar - Updated Layout to Match Host */}
         <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}>
-            <Button variant="secondary" size="sm" onClick={() => setShowExitConfirm(true)} className="pointer-events-auto bg-white/10 backdrop-blur hover:bg-red-500/20 hover:text-red-200 transition-colors">Leave</Button>
+            <div className="pointer-events-auto flex items-center gap-2">
+               {/* Left spacer/controls */}
+            </div>
+            <div className="pointer-events-auto flex items-center gap-4">
+                <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600">
+                   Leave
+               </Button>
+            </div>
         </div>
 
         <div 
@@ -697,10 +703,14 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                       .animate-float { animation-name: float; animation-timing-function: ease-out; }
                   `}</style>
             </div>
+          
+          {/* Waiting for Stream - Updated with Bouncing Animation */}
           {!hasStream && (
-            <div className="text-center animate-pulse">
-                <Tv size={48} className="mx-auto text-gray-700 mb-4" />
-                <p className="text-gray-500">Waiting for stream...</p>
+            <div className="text-center">
+                <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 animate-blob">
+                    <Tv size={32} className="text-gray-500" />
+                </div>
+                <p className="text-gray-500 font-medium">Waiting for stream...</p>
             </div>
           )}
 
@@ -817,14 +827,14 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
         </div>
       </div>
 
-      {/* CHAT/SIDEBAR - Switches to Overlay on Mobile Typing */}
+      {/* CHAT/SIDEBAR - Updated Transitions and Styling to Match Host */}
       <div className={`
-          flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-3xl shadow-2xl overflow-hidden
+          flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out shadow-2xl overflow-hidden
           ${mobileTypingMode 
               ? 'absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/40 to-transparent m-0 border-none rounded-none pointer-events-none justify-end h-2/3' 
-              : `bg-black/40 backdrop-blur-xl border ${activeTheme.border} ${activeTheme.glow} w-auto md:w-80 mx-4 mb-4 md:m-4`
+              : `bg-black/40 backdrop-blur-xl border-l rounded-l-3xl ${activeTheme.border} ${activeTheme.glow} w-auto md:w-80`
           }
-          ${sidebarCollapsed ? 'max-w-0 md:max-w-0 opacity-0 m-0 border-0 pointer-events-none' : 'w-full opacity-100'}
+          ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'opacity-100'}
       `}>
            <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
                 {/* Hide tabs when mobile typing to save space */}
@@ -832,10 +842,10 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                    <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>
                    <button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'members' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>MEMBERS</button>
                </div>
-               <div className={`flex-1 relative ${mobileTypingMode ? 'pointer-events-auto' : ''}`}>
+               <div className={`flex-1 relative overflow-hidden flex flex-col ${mobileTypingMode ? 'pointer-events-auto' : ''}`}>
                    {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
                    {activeTab === 'members' && (
-                       <div className="p-4 space-y-2">
+                       <div className="p-4 space-y-2 overflow-y-auto">
                            {members.map(m => (
                                <div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
                                    <div className="flex items-center gap-3">
