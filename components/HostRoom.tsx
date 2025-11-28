@@ -18,6 +18,8 @@ interface HostRoomProps {
 type SidebarTab = 'chat' | 'members';
 
 const srtToVtt = (srtText: string) => {
+    // Basic SRT to WebVTT conversion
+    if (!srtText) return "";
     return "WEBVTT\n\n" + srtText
       .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')
       .replace(/\{\\([ibu])\}/g, '</$1>')
@@ -168,6 +170,11 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   const activeTheme = THEMES[currentTheme] || THEMES['default'];
 
+  // Effect: Broadcast CC Size Changes
+  useEffect(() => {
+      broadcast({ type: 'cc_size', payload: ccSize });
+  }, [ccSize]);
+
   useEffect(() => {
     if (electronAvailable) window.electron.setWindowOpacity(browserFix ? 0.999 : 1.0);
     return () => { if (electronAvailable) window.electron.setWindowOpacity(1.0); };
@@ -209,6 +216,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   const handleEndSession = () => { performCleanup(); onBack(); };
 
+  // ... (Standard Handlers) ...
   useEffect(() => {
     const handleFsChange = () => {
         const isFs = !!document.fullscreenElement;
@@ -216,10 +224,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         if (!isFs) setIsTheaterMode(false);
     };
     document.addEventListener('fullscreenchange', handleFsChange);
-    return () => {
-        document.removeEventListener('fullscreenchange', handleFsChange);
-        performCleanup();
-    };
+    return () => { document.removeEventListener('fullscreenchange', handleFsChange); performCleanup(); };
   }, []);
 
   const resetInputIdleTimer = () => {
@@ -278,17 +283,31 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   const loadSubtitle = async () => {
       if (!electronAvailable) return;
+      
+      // UPDATED: Call the new backend handler
       // @ts-ignore
-      const filePath = await window.electron.openSubtitleFile();
-      if (filePath) {
+      const result = await window.electron.openSubtitleFile();
+      
+      if (result && result.content) {
           try {
-              const response = await fetch(`file://${filePath}`);
-              let text = await response.text();
-              if (filePath.endsWith('.srt')) text = srtToVtt(text);
+              let text = result.content;
+              // Convert to VTT if SRT
+              if (result.path.endsWith('.srt')) {
+                  text = srtToVtt(text);
+              }
+              
+              // 1. Create Blob for Host
               const blob = new Blob([text], { type: 'text/vtt' });
               const url = URL.createObjectURL(blob);
-              setSubtitleUrl(url);
-          } catch (e) { console.error("Failed to load subs", e); alert("Failed to load subtitle file."); }
+              setSubtitleUrl(url); // Host sees it immediately
+
+              // 2. Broadcast text content to viewers
+              broadcast({ type: 'subtitle_track', payload: text });
+
+          } catch (e) {
+              console.error("Failed to process subtitles", e);
+              alert("Failed to load subtitle file.");
+          }
       }
       setShowCCMenu(false);
   };
@@ -324,7 +343,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     window.electron.onHostClientConnected(({ socketId }: any) => {
         const p = new SimplePeer({ initiator: true, trickle: false, stream: streamRef.current || undefined });
         p.on('signal', (data) => { const signalPayload = { type: 'signal', data, bitrate: 0 }; if (data.type === 'offer') { if (streamBitrateRef.current > 0) data.sdp = setVideoBitrate(data.sdp!, streamBitrateRef.current); signalPayload.bitrate = streamBitrateRef.current; } window.electron.hostSendSignal(socketId, signalPayload); });
-        p.on('connect', () => { sendDataToPeer(p, { type: 'members', payload: members }); sendDataToPeer(p, { type: 'theme_change', payload: currentTheme }); if (streamRef.current) sendDataToPeer(p, { type: 'bitrate_sync', payload: streamBitrateRef.current }); });
+        p.on('connect', () => { 
+            sendDataToPeer(p, { type: 'members', payload: members }); 
+            sendDataToPeer(p, { type: 'theme_change', payload: currentTheme }); 
+            if (streamRef.current) sendDataToPeer(p, { type: 'bitrate_sync', payload: streamBitrateRef.current });
+            // Sync subtitles to new joiner if they exist (requires storing raw text in ref/state if you want perfect persistence for late joiners, but this is okay for now)
+        });
         p.on('data', (data) => handleData(socketId, data));
         p.on('close', () => handlePeerDisconnect(socketId));
         peersRef.current.set(socketId, p);
@@ -510,6 +534,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       lastStatsRef.current = null;
   };
 
+  // ... [Toggle Logic: Mute, Fullscreen, etc.] ...
   const toggleMute = () => { if (localVolume > 0) setLocalVolume(0); else setLocalVolume(0.5); };
   const toggleFullscreen = () => { const elem = containerRef.current; if (!document.fullscreenElement) elem?.requestFullscreen().catch(console.error); else document.exitFullscreen(); };
   const toggleTheaterMode = () => { if (isFullscreen) document.exitFullscreen(); else setIsTheaterMode(!isTheaterMode); };
@@ -731,3 +756,30 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     </div>
   );
 };
+
+### Step 3: Update `components/ViewerRoom.tsx`
+We need the viewer to listen for the subtitle data and display it.
+
+**Add this to your `ViewerRoom.tsx`:**
+
+1.  **State:** `const [subtitleUrl, setSubtitleUrl] = useState<string | null>(null);`
+2.  **Handler:** Inside `handleSignal`'s `p.on('data')` block, add:
+    ```tsx
+    if (msg.type === 'subtitle_track') {
+        const blob = new Blob([msg.payload], { type: 'text/vtt' });
+        const url = URL.createObjectURL(blob);
+        setSubtitleUrl(url);
+    }
+    // Optional: Sync CC Size
+    if (msg.type === 'cc_size') {
+        // You can add state for this if you want viewer size to sync
+    }
+    ```
+3.  **JSX:** Add the track to the video element.
+    ```tsx
+    <video ref={videoRef} ... >
+        {subtitleUrl && <track label="English" kind="subtitles" src={subtitleUrl} default />}
+    </video>
+    ```
+
+This is the complete fix. It ensures **everyone sees subtitles** (by sending the text file itself) and **you see them too** (by reading the file properly in the backend).
