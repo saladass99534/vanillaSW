@@ -3,7 +3,7 @@ import SimplePeer from 'simple-peer';
 import { Button } from './Button';
 import { Chat, ChatHandle } from './Chat';
 import { ChatMessage, generateRandomName, Member, ReplyContext, StreamStats, FloatingEmoji } from '../types';
-import { Wifi, WifiOff, Tv, MessageSquare, Users, Crown, Clock, X, RefreshCw, Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, AlertCircle, Activity, Minimize, Sliders, PictureInPicture, Clapperboard } from 'lucide-react';
+import { Wifi, Tv, Users, Crown, X, Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, AlertCircle, Activity, Minimize, PictureInPicture, Clapperboard } from 'lucide-react';
 
 interface ViewerRoomProps {
   onBack: () => void;
@@ -647,8 +647,8 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Video Area */}
-      <div className={`flex flex-col relative bg-black min-w-0 transition-all duration-500 ease-in-out ${sidebarCollapsed || mobileTypingMode ? 'w-full h-full' : 'w-full h-[35vh] min-h-[250px] md:h-full md:flex-1'} ${mobileTypingMode ? 'absolute inset-0 z-0' : 'sticky top-0 z-30 md:static'}`}>
+      {/* Video Area - FIXED: Use flex-1 instead of w-full to prevent layout overflow */}
+      <div className={`flex flex-col relative bg-black min-w-0 flex-1 ${mobileTypingMode ? 'absolute inset-0 z-0' : 'sticky top-0 z-30 md:static'}`}>
         
         {/* Top Bar - Located inside Video Viewport */}
         <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}>
@@ -826,15 +826,15 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
         </div>
       </div>
 
-      {/* CHAT/SIDEBAR - Updated Transitions and Styling to Match Host */}
+      {/* CHAT/SIDEBAR - REMOVED ANIMATION TRANSITIONS */}
       <div className={`
-          bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden
+          bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 rounded-l-3xl border-l shadow-2xl overflow-hidden z-20
           ${mobileTypingMode 
               ? 'absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/40 to-transparent m-0 border-none rounded-none pointer-events-none justify-end h-2/3' 
               : `${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'w-80 opacity-100'} ${activeTheme.border} ${activeTheme.glow}`
           }
       `}>
-           <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
+           <div className={`min-w-[320px] h-full flex flex-col`}>
                 {/* Hide tabs when mobile typing to save space */}
                <div className={`flex p-2 gap-2 ${mobileTypingMode ? 'hidden' : ''}`}>
                    <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>
