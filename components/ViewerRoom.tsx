@@ -618,16 +618,12 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
      );
   }
 
-  // Mobile typing logic
   const mobileTypingMode = isMobile && isInputFocused;
   const controlsVisible = (showControls || (isInputFocused && !isInputIdle)) && !mobileTypingMode;
   const sidebarCollapsed = isTheaterMode || isFullscreen;
 
-  // Dynamic height style for mobile viewport responsiveness
-  const containerStyle = isMobile ? { height: `${viewportHeight}px` } : {};
-
   return (
-    <div style={containerStyle} className="flex flex-col md:flex-row h-[100dvh] bg-[#313338] text-gray-100 overflow-hidden font-sans relative transition-colors duration-500">
+    <div className="flex h-screen bg-[#111] text-gray-100 overflow-hidden font-sans">
       
        {showExitConfirm && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -647,21 +643,9 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Video Area - FIXED: Use flex-1 instead of w-full to prevent layout overflow */}
-      <div className={`flex flex-col relative bg-black min-w-0 flex-1 ${mobileTypingMode ? 'absolute inset-0 z-0' : 'sticky top-0 z-30 md:static'}`}>
+      {/* Video Area */}
+      <div className="flex-1 flex flex-col relative bg-black min-w-0">
         
-        {/* Top Bar - Located inside Video Viewport */}
-        <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}>
-            <div className="pointer-events-auto flex items-center gap-2">
-               {/* Left spacer/controls */}
-            </div>
-            <div className="pointer-events-auto flex items-center gap-4">
-                <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600">
-                   Leave
-               </Button>
-            </div>
-        </div>
-
         <div 
             ref={containerRef}
             className="flex-1 flex items-center justify-center relative bg-black group"
@@ -677,6 +661,18 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 }
             }}
         >
+          {/* Top Bar - Located inside Video Viewport */}
+          <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}>
+              <div className="pointer-events-auto flex items-center gap-2">
+                 {/* Left spacer/controls */}
+              </div>
+              <div className="pointer-events-auto flex items-center gap-4">
+                  <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600">
+                     Leave
+                 </Button>
+              </div>
+          </div>
+            
           {/* FLOATING EMOJIS */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
                   {floatingEmojis.map(emoji => (
@@ -826,21 +822,18 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
         </div>
       </div>
 
-      {/* CHAT/SIDEBAR - REMOVED ANIMATION TRANSITIONS */}
+      {/* CHAT/SIDEBAR - UPDATED to match HostRoom animations */}
       <div className={`
-          bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 rounded-l-3xl border-l shadow-2xl overflow-hidden z-20
-          ${mobileTypingMode 
-              ? 'absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/40 to-transparent m-0 border-none rounded-none pointer-events-none justify-end h-2/3' 
-              : `${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'w-80 opacity-100'} ${activeTheme.border} ${activeTheme.glow}`
-          }
+          bg-black/40 backdrop-blur-xl flex flex-col md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden
+          ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'w-80 opacity-100'}
+          ${activeTheme.border} ${activeTheme.glow}
       `}>
-           <div className={`min-w-[320px] h-full flex flex-col`}>
-                {/* Hide tabs when mobile typing to save space */}
-               <div className={`flex p-2 gap-2 ${mobileTypingMode ? 'hidden' : ''}`}>
+           <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
+               <div className="flex p-2 gap-2">
                    <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>
                    <button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'members' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>MEMBERS</button>
                </div>
-               <div className={`flex-1 relative overflow-hidden flex flex-col ${mobileTypingMode ? 'pointer-events-auto' : ''}`}>
+               <div className="flex-1 relative overflow-hidden flex flex-col">
                    {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
                    {activeTab === 'members' && (
                        <div className="p-4 space-y-2 overflow-y-auto">
