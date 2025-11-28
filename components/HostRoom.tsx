@@ -4,7 +4,7 @@ import {
   Users, Copy, Check, Tv, Maximize, Minimize, Volume2, VolumeX,
   ScreenShare, ScreenShareOff, Power, Crown, X, Smile, Image as ImageIcon, ArrowLeft, Zap, Send,
   Monitor, AppWindow, AlertTriangle, AlertCircle, Wifi, HelpCircle, Activity, RefreshCw, Globe, RotateCcw, Clapperboard, PictureInPicture,
-  FileVideo // NEW ICON
+  FileVideo, Trash2 // Added Trash2 icon
 } from 'lucide-react';
 import { Button } from './Button';
 import { Chat, ChatHandle } from './Chat';
@@ -110,7 +110,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   // Source Selection
   const [showSourceSelector, setShowSourceSelector] = useState(false);
   const [availableSources, setAvailableSources] = useState<DesktopSource[]>([]);
-  const [sourceTab, setSourceTab] = useState<'screen' | 'window' | 'file'>('screen'); // Added 'file'
+  const [sourceTab, setSourceTab] = useState<'screen' | 'window' | 'file'>('screen');
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [isRefreshingSources, setIsRefreshingSources] = useState(false);
   
@@ -349,16 +349,28 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       }
   }, [isSharing]);
 
-  // Sync volume with both the preview and the hidden file player
+  // --- FIX 1: ECHO PREVENTION LOGIC ---
+  // If we are playing a file, the Source Player (fileVideoRef) should have volume.
+  // The Preview Player (videoRef) should be MUTED because it's just a mirror.
+  // Otherwise, you hear the audio twice (once from source, once from preview).
   useEffect(() => {
       if (videoRef.current) {
-          videoRef.current.volume = localVolume;
-          videoRef.current.muted = (localVolume === 0);
+          if (sourceTab === 'file') {
+              // In file mode, MUTE the preview to avoid double audio
+              videoRef.current.volume = 0;
+              videoRef.current.muted = true;
+          } else {
+              videoRef.current.volume = localVolume;
+              videoRef.current.muted = (localVolume === 0);
+          }
       }
+      
+      // The hidden file player acts as the "Master" audio source in file mode
       if (fileVideoRef.current) {
           fileVideoRef.current.volume = localVolume;
       }
-  }, [localVolume]);
+  }, [localVolume, sourceTab]);
+  // ------------------------------------
 
   const handlePeerDisconnect = (socketId: string) => {
       if (peersRef.current.has(socketId)) {
@@ -427,17 +439,31 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           };
 
           if (sourceId === 'file') {
-              // --- FILE STREAM LOGIC ---
+              // --- FIX 2: ROBUST FILE STREAM START ---
               if (!fileVideoRef.current || !fileStreamUrl) {
                   alert("No file selected!");
                   return;
               }
-              await fileVideoRef.current.play();
+              
+              // Ensure we start from the beginning or where we left off, but make sure it's loaded
+              try {
+                  await fileVideoRef.current.play();
+              } catch (playErr) {
+                  console.warn("Play interrupted or failed, likely mostly loaded. Continuing...", playErr);
+              }
+
               // @ts-ignore
               const stream = fileVideoRef.current.captureStream(60); 
+              
+              // Verify we actually got tracks
+              if (stream.getTracks().length === 0) {
+                  throw new Error("Failed to capture stream from video element. It might not be playing.");
+              }
+
               finalStream = new MediaStream([...stream.getVideoTracks(), ...stream.getAudioTracks()]);
               setAudioSource('file'); 
-              setLocalVolume(1); // Set volume to 100% for file playback
+              setLocalVolume(1); 
+              // ---------------------------------------
           }
           else if (audioSource === 'none') {
               finalStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);
@@ -480,10 +506,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       }
       if (videoRef.current) videoRef.current.srcObject = null;
       if (ambilightRef.current) ambilightRef.current.srcObject = null;
+      
+      // --- FIX 3: WORKFLOW RESET ---
       if (fileVideoRef.current) {
           fileVideoRef.current.pause();
-          fileVideoRef.current.src = "";
+          fileVideoRef.current.src = ""; // Fully unload the video
+          fileVideoRef.current.load();   // Force reset
       }
+      // Reset selections so user starts fresh next time
+      setFileStreamUrl(null);
+      setSelectedSourceId(null);
+      setSourceTab('screen'); // Default back to screen tab
+      // -----------------------------
+      
       setIsSharing(false);
       lastStatsRef.current = null;
   };
@@ -634,14 +669,18 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                             <button onClick={() => setSourceTab('screen')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'screen' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>Screens</button>
                             <button onClick={() => setSourceTab('window')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'window' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>Windows</button>
                             
-                            {/* --- NEW FILE TAB --- */}
+                            {/* --- FILE TAB --- */}
                             <button 
                                 onClick={async () => {
-                                    const filePath = await window.electron.openVideoFile();
-                                    if (filePath) {
-                                        setFileStreamUrl(`file://${filePath}`);
-                                        setSourceTab('file');
-                                        setSelectedSourceId('file');
+                                    if (!fileStreamUrl) { // Only open picker if no file selected
+                                        const filePath = await window.electron.openVideoFile();
+                                        if (filePath) {
+                                            setFileStreamUrl(`file://${filePath}`);
+                                            setSourceTab('file');
+                                            setSelectedSourceId('file');
+                                        }
+                                    } else {
+                                        setSourceTab('file'); // Just switch tab if already selected
                                     }
                                 }} 
                                 className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'file' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
@@ -654,7 +693,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                             </div>
                         </div>
 
-                        {/* --- NEW MAC WARNING --- */}
                         {isMac && sourceTab === 'window' && audioSource === 'system' && (
                             <div className="mx-6 mt-4 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg flex items-center gap-3 animate-in slide-in-from-top-2">
                                 <AlertTriangle className="text-orange-500 shrink-0" size={20} />
@@ -666,15 +704,39 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                             {sourceTab === 'file' ? (
                                 <div className="flex flex-col items-center justify-center h-full text-center">
                                     {fileStreamUrl ? (
-                                        <div className="w-full max-w-lg">
+                                        <div className="w-full max-w-lg relative group">
                                             <div className="aspect-video bg-black rounded-xl overflow-hidden border-2 border-purple-500 shadow-[0_0_30px_rgba(168,85,247,0.3)] mb-4">
                                                 <video src={fileStreamUrl} className="w-full h-full object-contain" controls />
                                             </div>
+                                            
+                                            {/* --- FIX 4: REMOVE BUTTON --- */}
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setFileStreamUrl(null);
+                                                    setSelectedSourceId(null);
+                                                }}
+                                                className="absolute top-2 right-2 p-2 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 shadow-lg"
+                                                title="Remove File"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                            
                                             <p className="text-green-400 font-bold flex items-center justify-center gap-2"><Check size={16}/> File Ready</p>
                                             <p className="text-gray-500 text-xs mt-1">Audio will be captured directly from file.</p>
                                         </div>
                                     ) : (
-                                        <p className="text-gray-500">Click "Video File" to select a movie.</p>
+                                        <div className="text-center">
+                                            <p className="text-gray-500 mb-4">Select a local video file for perfect quality.</p>
+                                            <Button onClick={async () => {
+                                                const filePath = await window.electron.openVideoFile();
+                                                if (filePath) {
+                                                    setFileStreamUrl(`file://${filePath}`);
+                                                    setSourceTab('file');
+                                                    setSelectedSourceId('file');
+                                                }
+                                            }}>Choose File</Button>
+                                        </div>
                                     )}
                                 </div>
                             ) : sourceTab === 'screen' ? (
@@ -729,6 +791,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 </div>
             )}
 
+            {/* FLOATING EMOJIS, AMBILIGHT, MAIN VIDEO */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
                   {floatingEmojis.map(emoji => (
                       <div key={emoji.id} className="absolute bottom-0 text-6xl animate-float" style={{ left: `${emoji.x}%`, animationDuration: `${emoji.animationDuration}s`, filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))', transform: 'perspective(500px) rotateX(10deg)' }}>{emoji.emoji}</div>
@@ -755,6 +818,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 playsInline 
             />
 
+            {/* OVERLAYS: Nerd Stats, Chat, Controls */}
             {showNerdStats && (
                 <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
                     <h4 className={`${activeTheme.primary} font-bold mb-1 flex items-center gap-1`}><Activity size={10}/> STREAM STATS (OUT)</h4>
