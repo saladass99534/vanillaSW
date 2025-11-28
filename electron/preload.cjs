@@ -6,8 +6,9 @@ contextBridge.exposeInMainWorld('electron', {
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
   setWindowOpacity: (opacity) => ipcRenderer.send('set-window-opacity', opacity),
   
-  // NEW: File Picker
+  // NEW: File Pickers
   openVideoFile: () => ipcRenderer.invoke('open-video-file'),
+  openSubtitleFile: () => ipcRenderer.invoke('open-subtitle-file'),
 
   // Web Server
   toggleWebServer: (enable) => ipcRenderer.send('toggle-web-server', enable),
