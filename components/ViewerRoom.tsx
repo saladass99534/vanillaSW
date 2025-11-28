@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { Button } from './Button';
@@ -648,10 +647,10 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Video Area - In mobile typing mode, it becomes the background */}
+      {/* Video Area */}
       <div className={`flex flex-col relative bg-black min-w-0 transition-all duration-500 ease-in-out ${sidebarCollapsed || mobileTypingMode ? 'w-full h-full' : 'w-full h-[35vh] min-h-[250px] md:h-full md:flex-1'} ${mobileTypingMode ? 'absolute inset-0 z-0' : 'sticky top-0 z-30 md:static'}`}>
         
-        {/* Top Bar - Updated Layout to Match Host */}
+        {/* Top Bar - Located inside Video Viewport */}
         <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}>
             <div className="pointer-events-auto flex items-center gap-2">
                {/* Left spacer/controls */}
@@ -829,12 +828,11 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
 
       {/* CHAT/SIDEBAR - Updated Transitions and Styling to Match Host */}
       <div className={`
-          flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out shadow-2xl overflow-hidden
+          bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden
           ${mobileTypingMode 
               ? 'absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/40 to-transparent m-0 border-none rounded-none pointer-events-none justify-end h-2/3' 
-              : `bg-black/40 backdrop-blur-xl border-l rounded-l-3xl ${activeTheme.border} ${activeTheme.glow} w-auto md:w-80`
+              : `${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'w-80 opacity-100'} ${activeTheme.border} ${activeTheme.glow}`
           }
-          ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'opacity-100'}
       `}>
            <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
                 {/* Hide tabs when mobile typing to save space */}
