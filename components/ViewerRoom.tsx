@@ -652,10 +652,36 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     onClick={() => { if (!electronAvailable) { setShowControls(!showControls); } }}
                 >
                     {showExitConfirm && ( <div className="absolute inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"><div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full"><h3 className="text-lg font-bold">Leave Party?</h3><p className="text-sm text-gray-400 my-4">You will be disconnected.</p><div className="flex gap-3 justify-end"><Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button><Button variant="danger" onClick={onBack}>Leave</Button></div></div></div> )}
+                    
                     <div className={`absolute top-0 right-0 z-20 p-4 transition-opacity ${controlsVisible ? 'opacity-100' : 'opacity-0'}`} onClick={(e) => e.stopPropagation()}><Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button></div>
+                    
+                    {/* --- FIX 1: INSERTED FLOATING EMOJIS --- */}
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none z-40"> 
+                        {floatingEmojis.map(emoji => (
+                            <div key={emoji.id} className="absolute bottom-0 text-6xl animate-float" style={{left: `${emoji.x}%`, animationDuration: `${emoji.animationDuration}s`}}>
+                                {emoji.emoji}
+                            </div>
+                        ))} 
+                        <style>{`@keyframes float { 0% { transform: translateY(100%) scale(0.8); opacity: 0; } 10% { opacity: 1; transform: translateY(80%) scale(1.2); } 100% { transform: translateY(-150%) scale(1); opacity: 0; } } .animate-float { animation-name: float; animation-timing-function: ease-out; }`}</style>
+                    </div>
+
+                    {/* --- FIX 2: INSERTED NERD STATS --- */}
+                    {showNerdStats && ( 
+                        <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono pointer-events-none">
+                            <h4 className={`${activeTheme.primary} font-bold mb-1`}>STREAM STATS</h4>
+                            <div className="grid grid-cols-2 gap-x-4">
+                                <span>Res:</span><span>{stats.resolution}</span>
+                                <span>FPS:</span><span>{Math.round(stats.fps)}</span>
+                                <span>Bitrate:</span><span className="text-green-400">{stats.bitrate}</span>
+                                <span>Ping:</span><span className="text-yellow-400">{stats.latency}</span>
+                            </div>
+                        </div> 
+                    )}
+
                     {!hasStream && <div className="text-center"><div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 animate-blob"><Tv size={32} className="text-gray-500"/></div><p className="text-gray-500 font-medium">Waiting for stream...</p></div>}
                     <video ref={ambilightRef} className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60" muted />
                     <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
+                    
                     {/* UPDATED MOBILE CONTROLS */}
                     <div onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-xl border border-white/10">
@@ -670,8 +696,10 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     </div>
                 </div>
             </div>
+            
             {/* Chat/Members Area (Fills remaining space) */}
-            <div className="flex-1 min-h-0 flex flex-col bg-[#1e1f22]">
+            {/* --- FIX 3: ADDED HIDDEN LOGIC FOR THEATER MODE --- */}
+            <div className={`flex-1 min-h-0 flex flex-col bg-[#1e1f22] ${isTheaterMode ? 'hidden' : ''}`}>
                 <div className="flex p-2 gap-2"><button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'chat' ? 'bg-white/10' : ''}`}>CHAT</button><button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'members' ? 'bg-white/10' : ''}`}>MEMBERS</button></div>
                 <div className="flex-1 relative min-h-0">
                     {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
