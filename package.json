@@ -52,7 +52,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "assets/icon1.ico"
+      "icon": "assets/icon.ico"
     },
     "mac": {
       "target": "dmg",
