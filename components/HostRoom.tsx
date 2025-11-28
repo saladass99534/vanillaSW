@@ -107,7 +107,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [isRoomStarted, setIsRoomStarted] = useState(false);
   const [myIp, setMyIp] = useState('');
   const [isInitializing, setIsInitializing] = useState(false);
-  const [isWebStreamEnabled, setIsWebStreamEnabled] = useState(false);
+  const [isWebStreamEnabled, setIsWebStreamEnabled] = useState(true);
 
   // App State
   const [username] = useState(generateRandomName());
