@@ -1,9 +1,10 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, dialog } = require('electron'); // Added 'dialog'
+const { app, BrowserWindow, ipcMain, desktopCapturer, dialog } = require('electron'); 
 const path = require('path');
 const { exec } = require('child_process');
 const WebSocket = require('ws');
 const express = require('express');
 const http = require('http');
+const fs = require('fs'); // <--- ADDED: Required for reading subtitle files
 
 let mainWindow;
 let wss; 
@@ -104,13 +105,12 @@ ipcMain.on('set-window-opacity', (event, opacity) => {
     }
 });
 
-// --- NEW: FILE PICKER HANDLERS ---
+// --- FILE PICKER HANDLERS ---
 
 // Video File Picker
 ipcMain.handle('open-video-file', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openFile'],
-    // UPDATED FILTERS: Added m4v, ts, mts
     filters: [{ name: 'Movies', extensions: ['mp4', 'mkv', 'webm', 'mov', 'm4v', 'ts', 'mts'] }]
   });
   if (canceled) {
@@ -120,16 +120,25 @@ ipcMain.handle('open-video-file', async () => {
   }
 });
 
-// Subtitle File Picker
+// Subtitle File Picker (UPDATED TO READ CONTENT)
 ipcMain.handle('open-subtitle-file', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [{ name: 'Subtitles', extensions: ['vtt', 'srt'] }]
   });
-  if (canceled) {
+  
+  if (canceled || filePaths.length === 0) {
     return null;
-  } else {
-    return filePaths[0];
+  }
+
+  const filePath = filePaths[0];
+  try {
+    // Read the file content directly so we can send it to the frontend/viewers
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return { path: filePath, content: content };
+  } catch (e) {
+    console.error("Failed to read subtitle file", e);
+    return null;
   }
 });
 // --------------------------------
@@ -253,4 +262,3 @@ ipcMain.on('connect-to-host', (event, ip, port) => {
 ipcMain.on('guest-send-signal', (event, data) => {
   if (guestWs && guestWs.readyState === WebSocket.OPEN) guestWs.send(JSON.stringify(data));
 });
-
