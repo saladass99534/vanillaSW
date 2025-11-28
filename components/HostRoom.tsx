@@ -907,45 +907,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   return (
     <div className="flex h-screen bg-[#111] text-gray-100 overflow-hidden font-sans">
       
-      {showExitConfirm && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
-                <div className="flex items-center gap-3 mb-4 text-gray-200">
-                    <AlertCircle size={24} />
-                    <h3 className="text-lg font-bold">End Session?</h3>
-                </div>
-                <p className="text-gray-400 text-sm mb-6">
-                    This will disconnect all viewers and stop the stream.
-                </p>
-                <div className="flex gap-3 justify-end">
-                    <Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button>
-                    <Button variant="danger" onClick={handleEndSession}>End Session</Button>
-                </div>
-            </div>
-        </div>
-      )}
-
       {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col relative transition-all duration-300 ${activeTab && !isTheaterMode && !isFullscreen ? 'mr-0' : 'mr-0'}`}>
+      <div className="flex-1 flex flex-col relative min-w-0">
         
-        {/* Floating Top Controls */}
-        <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-            <div className="pointer-events-auto flex items-center gap-2">
-               {/* Optional: Add back/home button here if needed */}
-            </div>
-
-            <div className="pointer-events-auto flex items-center gap-4">
-               <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg">
-                   <Wifi size={14} className={myIp ? "text-green-400" : "text-gray-500"} />
-                   <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(myIp ? `${myIp}:8080` : '')} title="Click to Copy IP">{myIp ? `${myIp}:8080` : "Detecting IP..."}</span>
-               </div>
-               
-               <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600">
-                   <Power size={14} /> End
-               </Button>
-            </div>
-        </div>
-
         {/* Stream Area */}
         <div 
             ref={containerRef}
@@ -957,6 +921,43 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500);
             }}
         >
+            {/* Top controls moved inside for fullscreen visibility */}
+            <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+                <div className="pointer-events-auto flex items-center gap-2">
+                   {/* Optional: Add back/home button here if needed */}
+                </div>
+
+                <div className="pointer-events-auto flex items-center gap-4">
+                   <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg">
+                       <Wifi size={14} className={myIp ? "text-green-400" : "text-gray-500"} />
+                       <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(myIp ? `${myIp}:8080` : '')} title="Click to Copy IP">{myIp ? `${myIp}:8080` : "Detecting IP..."}</span>
+                   </div>
+                   
+                   <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600">
+                       <Power size={14} /> End
+                   </Button>
+                </div>
+            </div>
+
+            {/* Exit confirm moved inside for fullscreen visibility */}
+            {showExitConfirm && (
+                <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3 mb-4 text-gray-200">
+                            <AlertCircle size={24} />
+                            <h3 className="text-lg font-bold">End Session?</h3>
+                        </div>
+                        <p className="text-gray-400 text-sm mb-6">
+                            This will disconnect all viewers and stop the stream.
+                        </p>
+                        <div className="flex gap-3 justify-end">
+                            <Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button>
+                            <Button variant="danger" onClick={handleEndSession}>End Session</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             {/* SOURCE SELECTOR MODAL (Moved inside stream container for fullscreen support) */}
             {showSourceSelector && (
                 <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1021,7 +1022,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
                         <div className="p-6 border-t border-white/10 bg-[#151618] rounded-b-2xl">
                                 <div className="grid grid-cols-2 gap-6 mb-6">
-                                    {/* LEFT COLUMN: Audio & Fixes */}
+                                    {/* LEFT COLUMN: Audio */}
                                     <div className="space-y-4">
                                         <div>
                                             <label className="text-xs font-bold text-gray-500 uppercase mb-2 block flex items-center gap-2">
@@ -1052,19 +1053,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                                     <span>MacOS often blocks audio from individual windows. If audio is silent, try 'Screen' mode or a virtual cable.</span>
                                                 </div>
                                             )}
-                                        </div>
-
-                                        <div className="flex items-center justify-between bg-white/5 p-2 rounded-lg border border-white/5">
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-300">Browser Stream Fix</p>
-                                                <p className="text-[10px] text-gray-500">Enable if stream freezes when backgrounded.</p>
-                                            </div>
-                                            <button 
-                                                onClick={() => setBrowserFix(!browserFix)} 
-                                                className={`w-8 h-4 rounded-full relative transition-colors ${browserFix ? 'bg-blue-500' : 'bg-gray-600'}`}
-                                            >
-                                                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${browserFix ? 'left-4.5' : 'left-0.5'}`} style={{ left: browserFix ? '18px' : '2px' }} />
-                                            </button>
                                         </div>
                                     </div>
 
@@ -1280,7 +1268,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
       {/* Sidebar - Collapsible for Theater Mode */}
       <div className={`
-          bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden
+          bg-black/40 backdrop-blur-xl flex flex-col md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden
           ${isTheaterMode || isFullscreen ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'w-80 opacity-100'}
           ${activeTheme.border} ${activeTheme.glow}
       `}>
