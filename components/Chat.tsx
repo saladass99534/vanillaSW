@@ -355,8 +355,8 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
 
       <div className={`relative z-20 flex-shrink-0 transition-all duration-300 transform ${
           isOverlay 
-            ? `px-4 pb-4 ${inputVisible ? 'opacity-100 pointer-events-auto translate-y-0' : 'opacity-0 pointer-events-none translate-y-4'}` 
-            : 'px-4 pt-4' // FIXED: Changed p-4 to px-4 pt-4
+            ? `px-4 ${inputVisible ? 'opacity-100 pointer-events-auto translate-y-0 pb-4' : 'opacity-0 pointer-events-none translate-y-4'}` 
+            : 'px-4 pt-4'
         }`}>
         
         {showPicker && (
