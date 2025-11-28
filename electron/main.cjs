@@ -46,7 +46,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    fullscreen: false, // Windowed mode
+    fullscreen: true, // Windowed mode
     show: false,       // Start hidden to prevent visual resizing glitches
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -304,5 +304,6 @@ ipcMain.on('guest-send-signal', (event, data) => {
     guestWs.send(JSON.stringify(data));
   }
 });
+
 
 // --- END OF FILE ---
