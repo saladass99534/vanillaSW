@@ -157,7 +157,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   useEffect(() => {
       if (!electronAvailable) {
           const hostname = window.location.hostname;
-          if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+          if (hostname && hostname !== 'localhost' && hostname !== '12-7.0.0.1') {
               setHostIpInput(hostname);
           }
       }
@@ -486,6 +486,23 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
     };
   }, [hasStream]);
 
+    // Anti-flicker logic for fullscreen controls
+    const clearControlsTimeout = () => {
+        if (controlsTimeoutRef.current) {
+            clearTimeout(controlsTimeoutRef.current);
+        }
+    };
+    const resetControlsTimeout = () => {
+        clearControlsTimeout();
+        controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500);
+    };
+
+    const handleMouseMove = () => {
+        setShowControls(true);
+        resetInputIdleTimer();
+        resetControlsTimeout();
+    };
+
   const resetInputIdleTimer = () => {
       setIsInputIdle(false);
       if (inputIdleTimeoutRef.current) clearTimeout(inputIdleTimeoutRef.current);
@@ -663,19 +680,49 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
         <div 
             ref={containerRef}
             className="flex-1 flex items-center justify-center relative bg-black group"
-            onMouseMove={() => { setShowControls(true); resetInputIdleTimer(); if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500); }}
+            onMouseMove={handleMouseMove}
             onClick={() => { if (!electronAvailable) { setShowControls(!showControls); } }}
         >
-          {showExitConfirm && ( <div className="absolute inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"><div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full"><h3 className="text-lg font-bold">Leave Party?</h3><p className="text-sm text-gray-400 my-4">You will be disconnected.</p><div className="flex gap-3 justify-end"><Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button><Button variant="danger" onClick={onBack}>Leave</Button></div></div></div> )}
-          <div className={`absolute top-0 right-0 z-20 p-4 transition-opacity ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}><Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button></div>
-          <div className="absolute inset-0 overflow-hidden pointer-events-none z-40"> {floatingEmojis.map(emoji => (<div key={emoji.id} className="absolute bottom-0 text-6xl animate-float" style={{left: `${emoji.x}%`, animationDuration: `${emoji.animationDuration}s`}}>{emoji.emoji}</div>))} <style>{`@keyframes float { 0% { transform: translateY(100%) scale(0.8); opacity: 0; } 10% { opacity: 1; transform: translateY(80%) scale(1.2); } 100% { transform: translateY(-150%) scale(1); opacity: 0; } } .animate-float { animation-name: float; animation-timing-function: ease-out; }`}</style></div>
-          {!hasStream && <div className="text-center"><div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 animate-blob"><Tv size={32} className="text-gray-500"/></div><p className="text-gray-500 font-medium">Waiting for stream...</p></div>}
-          <video ref={ambilightRef} className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60" muted />
-          {showNerdStats && ( <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono"><h4 className={`${activeTheme.primary} font-bold mb-1`}>STREAM STATS (RECV)</h4><div className="grid grid-cols-2 gap-x-4"><span>Resolution:</span><span>{stats.resolution}</span><span>FPS:</span><span>{Math.round(stats.fps)}</span><span>Bitrate:</span><span className="text-green-400">{stats.bitrate}</span><span>Latency:</span><span className="text-yellow-400">{stats.latency}</span><span>Packet Loss:</span><span className="text-red-400">{stats.packetLoss}</span></div></div> )}
-          {hasStream && !isPlaying && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30"><button onClick={togglePlay} className="bg-white/20 rounded-full p-6"><Play size={48} className="text-white fill-white ml-2"/></button></div>}
-          <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
-          {(isTheaterMode || isFullscreen) && <div className="absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60]"><Chat ref={chatRef} messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} isOverlay={true} inputVisible={controlsVisible} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} theme={activeTheme}/></div>}
-          <div className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}><div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10"><button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button><div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-24 transition-all"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none ${activeTheme.accent}`}/></div></div><div className="w-px h-6 bg-white/20"/> <div className="flex gap-2 items-center"><button onClick={() => handlePickerAction('start_picker')} disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')} className={`p-2 rounded-full ${activeTheme.primary}`} title="Suggest Movie"><Clapperboard size={18}/></button><button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 rounded-full ${showNerdStats ? activeTheme.primary : 'text-white'}`} title="Nerd Stats"><Activity size={18}/></button><button onClick={togglePiP} className="p-2 text-white" title="Picture-in-Picture"><PictureInPicture size={18}/></button><button onClick={toggleTheaterMode} className={`p-2 rounded-full ${isTheaterMode ? activeTheme.primary : 'text-white'}`} title="Theater Mode"><Tv size={18}/></button><button onClick={toggleFullscreen} className="p-2 text-white" title="Fullscreen">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button></div></div></div>
+            {/* Leave Confirmation Modal (Moved inside for fullscreen) */}
+            {showExitConfirm && (
+                <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3 mb-4 text-gray-200">
+                            <AlertCircle size={24} />
+                            <h3 className="text-lg font-bold">Leave Party?</h3>
+                        </div>
+                        <p className="text-gray-400 text-sm mb-6">
+                            You will be disconnected from the stream.
+                        </p>
+                        <div className="flex gap-3 justify-end">
+                            <Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button>
+                            <Button variant="danger" onClick={onBack}>Leave</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* Top Controls */}
+            <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} className={`absolute top-0 right-0 z-20 p-4 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button>
+            </div>
+            
+            {/* Floating Emojis */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none z-40"> {floatingEmojis.map(emoji => (<div key={emoji.id} className="absolute bottom-0 text-6xl animate-float" style={{left: `${emoji.x}%`, animationDuration: `${emoji.animationDuration}s`}}>{emoji.emoji}</div>))} <style>{`@keyframes float { 0% { transform: translateY(100%) scale(0.8); opacity: 0; } 10% { opacity: 1; transform: translateY(80%) scale(1.2); } 100% { transform: translateY(-150%) scale(1); opacity: 0; } } .animate-float { animation-name: float; animation-timing-function: ease-out; }`}</style></div>
+            
+            {!hasStream && <div className="text-center"><div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 animate-blob"><Tv size={32} className="text-gray-500"/></div><p className="text-gray-500 font-medium">Waiting for stream...</p></div>}
+            
+            <video ref={ambilightRef} className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60" muted />
+            
+            {showNerdStats && ( <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono"><h4 className={`${activeTheme.primary} font-bold mb-1`}>STREAM STATS (RECV)</h4><div className="grid grid-cols-2 gap-x-4"><span>Resolution:</span><span>{stats.resolution}</span><span>FPS:</span><span>{Math.round(stats.fps)}</span><span>Bitrate:</span><span className="text-green-400">{stats.bitrate}</span><span>Latency:</span><span className="text-yellow-400">{stats.latency}</span><span>Packet Loss:</span><span className="text-red-400">{stats.packetLoss}</span></div></div> )}
+            
+            {hasStream && !isPlaying && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30"><button onClick={togglePlay} className="bg-white/20 rounded-full p-6"><Play size={48} className="text-white fill-white ml-2"/></button></div>}
+            
+            <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
+            
+            {(isTheaterMode || isFullscreen) && <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} className="absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60]"><Chat ref={chatRef} messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} isOverlay={true} inputVisible={controlsVisible} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} theme={activeTheme}/></div>}
+            
+            <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}><div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10"><button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button><div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-24 transition-all"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none ${activeTheme.accent}`}/></div></div><div className="w-px h-6 bg-white/20"/> <div className="flex gap-2 items-center"><button onClick={() => handlePickerAction('start_picker')} disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')} className={`p-2 rounded-full ${activeTheme.primary}`} title="Suggest Movie"><Clapperboard size={18}/></button><button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 rounded-full ${showNerdStats ? activeTheme.primary : 'text-white'}`} title="Nerd Stats"><Activity size={18}/></button><button onClick={togglePiP} className="p-2 text-white" title="Picture-in-Picture"><PictureInPicture size={18}/></button><button onClick={toggleTheaterMode} className={`p-2 rounded-full ${isTheaterMode ? activeTheme.primary : 'text-white'}`} title="Theater Mode"><Tv size={18}/></button><button onClick={toggleFullscreen} className="p-2 text-white" title="Fullscreen">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button></div></div></div>
         </div>
       </div>
 
