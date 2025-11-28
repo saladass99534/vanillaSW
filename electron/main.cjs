@@ -104,11 +104,26 @@ ipcMain.on('set-window-opacity', (event, opacity) => {
     }
 });
 
-// --- NEW: FILE PICKER HANDLER ---
+// --- NEW: FILE PICKER HANDLERS ---
+
+// Video File Picker
 ipcMain.handle('open-video-file', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [{ name: 'Movies', extensions: ['mp4', 'mkv', 'webm', 'mov'] }]
+  });
+  if (canceled) {
+    return null;
+  } else {
+    return filePaths[0];
+  }
+});
+
+// Subtitle File Picker
+ipcMain.handle('open-subtitle-file', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Subtitles', extensions: ['vtt', 'srt'] }]
   });
   if (canceled) {
     return null;
