@@ -655,7 +655,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     
                     <div className={`absolute top-0 right-0 z-20 p-4 transition-opacity ${controlsVisible ? 'opacity-100' : 'opacity-0'}`} onClick={(e) => e.stopPropagation()}><Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button></div>
                     
-                    {/* --- FIX 1: INSERTED FLOATING EMOJIS --- */}
+                    {/* Hype Emojis */}
                     <div className="absolute inset-0 overflow-hidden pointer-events-none z-40"> 
                         {floatingEmojis.map(emoji => (
                             <div key={emoji.id} className="absolute bottom-0 text-6xl animate-float" style={{left: `${emoji.x}%`, animationDuration: `${emoji.animationDuration}s`}}>
@@ -665,7 +665,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                         <style>{`@keyframes float { 0% { transform: translateY(100%) scale(0.8); opacity: 0; } 10% { opacity: 1; transform: translateY(80%) scale(1.2); } 100% { transform: translateY(-150%) scale(1); opacity: 0; } } .animate-float { animation-name: float; animation-timing-function: ease-out; }`}</style>
                     </div>
 
-                    {/* --- FIX 2: INSERTED NERD STATS --- */}
+                    {/* Nerd Stats */}
                     {showNerdStats && ( 
                         <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono pointer-events-none">
                             <h4 className={`${activeTheme.primary} font-bold mb-1`}>STREAM STATS</h4>
@@ -682,7 +682,31 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     <video ref={ambilightRef} className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60" muted />
                     <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
                     
-                    {/* UPDATED MOBILE CONTROLS */}
+                    {/* --- FIX 4: INSERTED OVERLAY CHAT (THEATER MODE) --- */}
+                    {(isTheaterMode || isFullscreen) && (
+                        <div 
+                            className="absolute bottom-20 left-0 w-full z-[60] px-2"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <Chat 
+                                ref={chatRef} 
+                                messages={messages} 
+                                onSendMessage={handleSendMessage} 
+                                onAddReaction={() => {}} 
+                                onHypeEmoji={handleSendHype} 
+                                onPickerAction={handlePickerAction} 
+                                myId={myUserId} 
+                                isOverlay={true} 
+                                inputVisible={controlsVisible} 
+                                onInputFocus={() => setIsInputFocused(true)} 
+                                onInputBlur={() => setIsInputFocused(false)} 
+                                onInputChange={resetInputIdleTimer} 
+                                theme={activeTheme}
+                            />
+                        </div>
+                    )}
+
+                    {/* Controls */}
                     <div onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-xl border border-white/10">
                             <button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor"/>}</button>
@@ -697,8 +721,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 </div>
             </div>
             
-            {/* Chat/Members Area (Fills remaining space) */}
-            {/* --- FIX 3: ADDED HIDDEN LOGIC FOR THEATER MODE --- */}
+            {/* Chat/Members Area */}
             <div className={`flex-1 min-h-0 flex flex-col bg-[#1e1f22] ${isTheaterMode ? 'hidden' : ''}`}>
                 <div className="flex p-2 gap-2"><button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'chat' ? 'bg-white/10' : ''}`}>CHAT</button><button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'members' ? 'bg-white/10' : ''}`}>MEMBERS</button></div>
                 <div className="flex-1 relative min-h-0">
