@@ -4,7 +4,7 @@ import {
   Users, Copy, Check, Tv, Maximize, Minimize, Volume2, VolumeX,
   ScreenShare, ScreenShareOff, Power, Crown, X, Smile, Image as ImageIcon, ArrowLeft, Zap, Send,
   Monitor, AppWindow, AlertTriangle, AlertCircle, Wifi, HelpCircle, Activity, RefreshCw, Globe, RotateCcw, Clapperboard, PictureInPicture,
-  FileVideo, Trash2 // Added Trash2 icon
+  FileVideo, Trash2
 } from 'lucide-react';
 import { Button } from './Button';
 import { Chat, ChatHandle } from './Chat';
@@ -107,16 +107,17 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   const [videoFilters, setVideoFilters] = useState({ brightness: 100, contrast: 100, saturate: 100 });
   
-  // Source Selection
   const [showSourceSelector, setShowSourceSelector] = useState(false);
   const [availableSources, setAvailableSources] = useState<DesktopSource[]>([]);
   const [sourceTab, setSourceTab] = useState<'screen' | 'window' | 'file'>('screen');
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [isRefreshingSources, setIsRefreshingSources] = useState(false);
   
-  // File Player State
   const [fileStreamUrl, setFileStreamUrl] = useState<string | null>(null);
   const fileVideoRef = useRef<HTMLVideoElement>(null); 
+  // FIX: Refs for Web Audio API context
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
 
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [audioSource, setAudioSource] = useState<string>('system'); 
@@ -181,6 +182,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           window.electron.toggleWebServer(false);
           window.electron.stopHostServer(); 
           window.electron.setWindowOpacity(1.0);
+      }
+      // Clean up Audio Context
+      if (audioContextRef.current) {
+          audioContextRef.current.close();
+          audioContextRef.current = null;
+          audioSourceNodeRef.current = null;
       }
   };
 
@@ -349,28 +356,21 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       }
   }, [isSharing]);
 
-  // --- FIX 1: ECHO PREVENTION LOGIC ---
-  // If we are playing a file, the Source Player (fileVideoRef) should have volume.
-  // The Preview Player (videoRef) should be MUTED because it's just a mirror.
-  // Otherwise, you hear the audio twice (once from source, once from preview).
+  // --- FIX: AUDIO ROUTING VOLUME CONTROL ---
   useEffect(() => {
-      if (videoRef.current) {
-          if (sourceTab === 'file') {
-              // In file mode, MUTE the preview to avoid double audio
-              videoRef.current.volume = 0;
-              videoRef.current.muted = true;
-          } else {
-              videoRef.current.volume = localVolume;
-              videoRef.current.muted = (localVolume === 0);
-          }
-      }
-      
-      // The hidden file player acts as the "Master" audio source in file mode
+      // 1. Always keep the hidden file source at 100% volume so the stream is loud.
+      // Do NOT link this to localVolume.
       if (fileVideoRef.current) {
-          fileVideoRef.current.volume = localVolume;
+          fileVideoRef.current.volume = 1.0; 
       }
-  }, [localVolume, sourceTab]);
-  // ------------------------------------
+
+      // 2. Control the preview video volume (what you hear) with the slider
+      if (videoRef.current) {
+          videoRef.current.volume = localVolume;
+          videoRef.current.muted = (localVolume === 0);
+      }
+  }, [localVolume]);
+  // -----------------------------------------
 
   const handlePeerDisconnect = (socketId: string) => {
       if (peersRef.current.has(socketId)) {
@@ -439,13 +439,39 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           };
 
           if (sourceId === 'file') {
-              // --- FIX 2: ROBUST FILE STREAM START ---
               if (!fileVideoRef.current || !fileStreamUrl) {
                   alert("No file selected!");
                   return;
               }
               
-              // Ensure we start from the beginning or where we left off, but make sure it's loaded
+              // Ensure audio source is 100% volume
+              fileVideoRef.current.volume = 1.0; 
+              fileVideoRef.current.muted = false;
+
+              // --- FIX: WEB AUDIO API ROUTING ---
+              // This disconnects the source from your speakers (Preventing Echo)
+              // But keeps it flowing into the stream (100% volume)
+              // You hear it via the PREVIEW player instead.
+              if (!audioContextRef.current) {
+                  const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+                  audioContextRef.current = new AudioContext();
+              }
+              const ctx = audioContextRef.current;
+              
+              // Connect source only once
+              if (!audioSourceNodeRef.current) {
+                  audioSourceNodeRef.current = ctx.createMediaElementSource(fileVideoRef.current);
+              }
+              const sourceNode = audioSourceNodeRef.current;
+              const destination = ctx.createMediaStreamDestination();
+              
+              // Route: Source -> Stream Destination (For Peers)
+              sourceNode.connect(destination); 
+              
+              // Note: We intentionally DO NOT connect to ctx.destination (Speakers).
+              // This silences the hidden player locally.
+              // -----------------------------------
+
               try {
                   await fileVideoRef.current.play();
               } catch (playErr) {
@@ -453,17 +479,18 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
               }
 
               // @ts-ignore
-              const stream = fileVideoRef.current.captureStream(60); 
+              const videoStream = fileVideoRef.current.captureStream(60); 
               
-              // Verify we actually got tracks
-              if (stream.getTracks().length === 0) {
-                  throw new Error("Failed to capture stream from video element. It might not be playing.");
+              if (videoStream.getTracks().length === 0) {
+                  throw new Error("Failed to capture stream from video element.");
               }
 
-              finalStream = new MediaStream([...stream.getVideoTracks(), ...stream.getAudioTracks()]);
+              // Combine Captured Video + Web Audio Destination Audio
+              const audioTracks = destination.stream.getAudioTracks();
+              finalStream = new MediaStream([...videoStream.getVideoTracks(), ...audioTracks]);
+              
               setAudioSource('file'); 
-              setLocalVolume(1); 
-              // ---------------------------------------
+              setLocalVolume(0.5); // Default monitoring volume for you
           }
           else if (audioSource === 'none') {
               finalStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);
@@ -507,17 +534,14 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       if (videoRef.current) videoRef.current.srcObject = null;
       if (ambilightRef.current) ambilightRef.current.srcObject = null;
       
-      // --- FIX 3: WORKFLOW RESET ---
       if (fileVideoRef.current) {
           fileVideoRef.current.pause();
-          fileVideoRef.current.src = ""; // Fully unload the video
-          fileVideoRef.current.load();   // Force reset
+          fileVideoRef.current.src = ""; 
+          fileVideoRef.current.load();   
       }
-      // Reset selections so user starts fresh next time
       setFileStreamUrl(null);
       setSelectedSourceId(null);
-      setSourceTab('screen'); // Default back to screen tab
-      // -----------------------------
+      setSourceTab('screen'); 
       
       setIsSharing(false);
       lastStatsRef.current = null;
@@ -672,7 +696,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                             {/* --- FILE TAB --- */}
                             <button 
                                 onClick={async () => {
-                                    if (!fileStreamUrl) { // Only open picker if no file selected
+                                    if (!fileStreamUrl) { 
                                         const filePath = await window.electron.openVideoFile();
                                         if (filePath) {
                                             setFileStreamUrl(`file://${filePath}`);
@@ -680,7 +704,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                             setSelectedSourceId('file');
                                         }
                                     } else {
-                                        setSourceTab('file'); // Just switch tab if already selected
+                                        setSourceTab('file'); 
                                     }
                                 }} 
                                 className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'file' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
@@ -709,7 +733,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                                 <video src={fileStreamUrl} className="w-full h-full object-contain" controls />
                                             </div>
                                             
-                                            {/* --- FIX 4: REMOVE BUTTON --- */}
+                                            {/* REMOVE FILE BUTTON */}
                                             <button 
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -791,7 +815,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 </div>
             )}
 
-            {/* FLOATING EMOJIS, AMBILIGHT, MAIN VIDEO */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
                   {floatingEmojis.map(emoji => (
                       <div key={emoji.id} className="absolute bottom-0 text-6xl animate-float" style={{ left: `${emoji.x}%`, animationDuration: `${emoji.animationDuration}s`, filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))', transform: 'perspective(500px) rotateX(10deg)' }}>{emoji.emoji}</div>
@@ -818,7 +841,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 playsInline 
             />
 
-            {/* OVERLAYS: Nerd Stats, Chat, Controls */}
             {showNerdStats && (
                 <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
                     <h4 className={`${activeTheme.primary} font-bold mb-1 flex items-center gap-1`}><Activity size={10}/> STREAM STATS (OUT)</h4>
