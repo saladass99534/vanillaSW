@@ -127,7 +127,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
 
-  // NEW: Movie Title State
   const [movieTitle, setMovieTitle] = useState<string>("");
 
   const [duration, setDuration] = useState(0);
@@ -295,9 +294,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   };
 
   const formatTime = (time: number) => {
-      const mins = Math.floor(time / 60);
-      const secs = Math.floor(time % 60);
-      return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+      if (!isFinite(time) || isNaN(time)) return "0:00";
+      const hours = Math.floor(time / 3600);
+      const minutes = Math.floor((time % 3600) / 60);
+      const seconds = Math.floor(time % 60);
+      if (hours > 0) return `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+      return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
   useEffect(() => {
@@ -372,22 +374,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       return () => { if (statsIntervalRef.current) clearInterval(statsIntervalRef.current); };
   }, [isSharing, showNerdStats]);
 
-  // --- FIX: AUDIO & SUBTITLE HANDLING ---
+  // AUDIO VOLUME CONTROL
   useEffect(() => {
-      // 1. Ensure file source is always loud for stream capture
-      if (fileVideoRef.current) fileVideoRef.current.volume = 1.0; 
+      if (fileVideoRef.current) fileVideoRef.current.volume = 1.0; // Source always 100%
       
-      // 2. Control PREVIEW volume with slider (for host to hear)
       if (videoRef.current) {
           if (sourceTab === 'file') {
-            // FIX: DO NOT mute preview in file mode. 
-            // Since we disconnected the source from speakers, 
-            // the preview is the ONLY way the host hears the movie.
+            // Host hears file audio via preview player
             videoRef.current.volume = localVolume;
             videoRef.current.muted = (localVolume === 0);
           } else {
-            videoRef.current.volume = localVolume;
-            videoRef.current.muted = (localVolume === 0);
+            // Host hears screen audio via system (mute preview to prevent echo)
+            videoRef.current.volume = 0;
+            videoRef.current.muted = true;
           }
       }
   }, [localVolume, sourceTab]);
@@ -458,7 +457,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                   audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
                   video: videoConstraints
               } as any);
-              if (sourceTab === 'screen') setLocalVolume(0);
+              // Keep mute for screen share
+              setLocalVolume(0);
           } else {
               const videoStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);
               try {
@@ -472,6 +472,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
           streamRef.current = finalStream;
           
+          // FORCE PREVIEW UPDATE
           if (videoRef.current) {
               videoRef.current.srcObject = finalStream;
               videoRef.current.play().catch(e => console.error("Preview Play Error", e));
@@ -504,7 +505,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       setSelectedSourceId(null);
       setSourceTab('screen'); 
       setSubtitleUrl(null); 
-      setMovieTitle(""); // Reset Title
+      setMovieTitle(""); 
       setIsSharing(false);
       lastStatsRef.current = null;
   };
