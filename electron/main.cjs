@@ -74,6 +74,13 @@ function createWindow() {
   }
 }
 
+// --- FIX: ENABLE MACOS SYSTEM AUDIO LOOPBACK ---
+// This must be called BEFORE app.whenReady()
+if (process.platform === 'darwin') {
+    app.commandLine.appendSwitch('enable-features', 'MacLoopbackAudioForScreenShare,MacSckSystemAudioLoopbackOverride');
+}
+// -----------------------------------------------
+
 app.whenReady().then(() => {
   createWindow();
 
@@ -304,6 +311,3 @@ ipcMain.on('guest-send-signal', (event, data) => {
     guestWs.send(JSON.stringify(data));
   }
 });
-
-
-// --- END OF FILE ---
