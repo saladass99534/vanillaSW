@@ -619,240 +619,72 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   }
 
   const mobileTypingMode = isMobile && isInputFocused;
-  const controlsVisible = (showControls || (isInputFocused && !isInputIdle)) && !mobileTypingMode;
+  const controlsVisible = showControls || (isInputFocused && !isInputIdle);
   const sidebarCollapsed = isTheaterMode || isFullscreen;
 
+  // Render Mobile Layout
+  if (isMobile) {
+    return (
+        <div style={{ height: viewportHeight }} className="flex flex-col h-full bg-[#111] text-gray-100 overflow-hidden font-sans">
+            {/* Video Area (Sticky Top) */}
+            <div className={`relative bg-black ${mobileTypingMode ? 'h-[30vh] flex-shrink-0' : 'flex-1'}`}>
+                {/* All video-related overlays and elements go here */}
+                <div 
+                    ref={containerRef}
+                    className="w-full h-full flex items-center justify-center relative bg-black group"
+                    onClick={() => { if (!electronAvailable) { setShowControls(!showControls); } }}
+                >
+                    {showExitConfirm && ( <div className="absolute inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"><div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full"><h3 className="text-lg font-bold">Leave Party?</h3><p className="text-sm text-gray-400 my-4">You will be disconnected.</p><div className="flex gap-3 justify-end"><Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button><Button variant="danger" onClick={onBack}>Leave</Button></div></div></div> )}
+                    <div className={`absolute top-0 right-0 z-20 p-4 transition-opacity ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}><Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button></div>
+                    {!hasStream && <div className="text-center"><div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 animate-blob"><Tv size={32} className="text-gray-500"/></div><p className="text-gray-500 font-medium">Waiting for stream...</p></div>}
+                    <video ref={ambilightRef} className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60" muted />
+                    <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
+                    <div className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}><div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-xl border border-white/10"><button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor"/>}</button><button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={18} className="text-red-400"/> : <Volume2 size={18} className="text-white"/>}</button><div className="w-px h-5 bg-white/20"/> <button onClick={toggleFullscreen} className="p-2 text-white">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button></div></div>
+                </div>
+            </div>
+            {/* Chat/Members Area (Fills remaining space) */}
+            <div className="flex-1 min-h-0 flex flex-col bg-[#1e1f22]">
+                <div className="flex p-2 gap-2"><button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'chat' ? 'bg-white/10' : ''}`}>CHAT</button><button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'members' ? 'bg-white/10' : ''}`}>MEMBERS</button></div>
+                <div className="flex-1 relative min-h-0">
+                    {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
+                    {activeTab === 'members' && <div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">{m.name[0]}</div><span>{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500"/>}</div>))}</div>}
+                </div>
+            </div>
+        </div>
+    );
+  }
+
+  // Render Desktop Layout
   return (
     <div className="flex h-screen bg-[#111] text-gray-100 overflow-hidden font-sans">
       
       {/* Video Area */}
       <div className="flex-1 flex flex-col relative bg-black min-w-0">
-        
         <div 
             ref={containerRef}
             className="flex-1 flex items-center justify-center relative bg-black group"
-            onMouseMove={() => {
-                setShowControls(true);
-                resetInputIdleTimer();
-                if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-                controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500);
-            }}
-            onClick={() => {
-                if (!electronAvailable && !mobileTypingMode) {
-                    setShowControls(!showControls);
-                }
-            }}
+            onMouseMove={() => { setShowControls(true); resetInputIdleTimer(); if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500); }}
+            onClick={() => { if (!electronAvailable) { setShowControls(!showControls); } }}
         >
-          {/* MODAL MOVED INSIDE for fullscreen visibility */}
-          {showExitConfirm && (
-            <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
-                    <div className="flex items-center gap-3 mb-4 text-gray-200">
-                        <AlertCircle size={24} />
-                        <h3 className="text-lg font-bold">Leave Party?</h3>
-                    </div>
-                    <p className="text-gray-400 text-sm mb-6">
-                        You will be disconnected from the stream.
-                    </p>
-                    <div className="flex gap-3 justify-end">
-                        <Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button>
-                        <Button variant="danger" onClick={onBack}>Leave</Button>
-                    </div>
-                </div>
-            </div>
-          )}
-
-          {/* Top Bar - Located inside Video Viewport */}
-          <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}>
-              <div className="pointer-events-auto flex items-center gap-2">
-                 {/* Left spacer/controls */}
-              </div>
-              <div className="pointer-events-auto flex items-center gap-4">
-                  <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600">
-                     Leave
-                 </Button>
-              </div>
-          </div>
-            
-          {/* FLOATING EMOJIS */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
-                  {floatingEmojis.map(emoji => (
-                      <div 
-                          key={emoji.id}
-                          className="absolute bottom-0 text-6xl animate-float"
-                          style={{
-                              left: `${emoji.x}%`,
-                              animationDuration: `${emoji.animationDuration}s`,
-                              filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
-                              transform: 'perspective(500px) rotateX(10deg)'
-                          }}
-                      >
-                          {emoji.emoji}
-                      </div>
-                  ))}
-                  <style>{`
-                      @keyframes float {
-                          0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
-                          10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
-                          100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
-                      }
-                      .animate-float { animation-name: float; animation-timing-function: ease-out; }
-                  `}</style>
-            </div>
-          
-          {/* Waiting for Stream - Updated with Bouncing Animation */}
-          {!hasStream && (
-            <div className="text-center">
-                <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 animate-blob">
-                    <Tv size={32} className="text-gray-500" />
-                </div>
-                <p className="text-gray-500 font-medium">Waiting for stream...</p>
-            </div>
-          )}
-
-          {/* AMBILIGHT LAYER */}
-          <video 
-              ref={ambilightRef}
-              className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60 pointer-events-none"
-              muted
-          />
-
-          {showNerdStats && (
-                <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
-                    <h4 className={`${activeTheme.primary} font-bold mb-1 flex items-center gap-1`}><Activity size={10}/> STREAM STATS (RECV)</h4>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                        <span>Resolution:</span> <span className="text-white">{stats.resolution}</span>
-                        <span>FPS:</span> <span className="text-white">{Math.round(stats.fps)}</span>
-                        <span>Bitrate:</span> <span className="text-green-400">{stats.bitrate}</span>
-                        <span>Latency:</span> <span className="text-yellow-400">{stats.latency}</span>
-                        <span>Packet Loss:</span> <span className="text-red-400">{stats.packetLoss}</span>
-                    </div>
-                </div>
-          )}
-
-          {/* BIG PLAY BUTTON OVERLAY (If paused) */}
-          {hasStream && !isPlaying && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px] transition-opacity duration-300">
-                  <button 
-                    onClick={togglePlay}
-                    className="bg-white/20 hover:bg-white/30 rounded-full p-6 backdrop-blur-md border border-white/20 transition-transform hover:scale-110 group/play"
-                  >
-                      <Play size={48} className="text-white fill-white ml-2 opacity-90 group-hover/play:opacity-100" />
-                  </button>
-              </div>
-          )}
-
-          <video 
-            ref={videoRef} 
-            className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} 
-            autoPlay 
-            playsInline 
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-          />
-
-          {(isTheaterMode || isFullscreen) && (
-               <div className={`absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60] flex flex-col justify-end transition-opacity duration-300`}>
-                  <Chat 
-                    ref={chatRef}
-                    messages={messages} 
-                    onSendMessage={handleSendMessage} 
-                    onAddReaction={() => {}}
-                    onHypeEmoji={handleSendHype}
-                    onPickerAction={handlePickerAction} 
-                    myId={myUserId} 
-                    isOverlay={true} 
-                    inputVisible={controlsVisible} 
-                    onInputFocus={() => setIsInputFocused(true)}
-                    onInputBlur={() => setIsInputFocused(false)}
-                    onInputChange={resetInputIdleTimer}
-                    theme={activeTheme}
-                  />
-              </div>
-          )}
-
-          {/* GLASS HUD */}
-          <div className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all duration-500 ${controlsVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`}>
-             <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-black/50 hover:scale-[1.02] transition-all">
-                 
-                 {/* Play/Pause */}
-                 <button onClick={togglePlay} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white active:scale-95">
-                     {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
-                 </button>
-
-                 {/* Volume */}
-                 <div className="flex items-center gap-2 group/vol">
-                    <button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95">
-                        {volume === 0 ? <VolumeX size={20} className="text-red-400" /> : <Volume2 size={20} className="text-gray-300 group-hover/vol:text-white" />}
-                    </button>
-                    <div className="w-20 md:w-0 overflow-hidden md:group-hover/vol:w-24 transition-all duration-300 flex items-center">
-                        <input 
-                            type="range" min="0" max="1" step="0.05" 
-                            value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))}
-                            className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`}
-                        />
-                    </div>
-                 </div>
-
-                 <div className="w-px h-6 bg-white/10"></div>
-
-                 <div className="flex gap-2 items-center">
-                    <button 
-                        onClick={() => handlePickerAction('start_picker')} 
-                        disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')}
-                        className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${(pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'text-gray-600 cursor-not-allowed' : `${activeTheme.primary}`}`}
-                        title="Suggest Movie"
-                    >
-                        <Clapperboard size={18} />
-                    </button>
-                     <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${showNerdStats ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Nerd Stats">
-                         <Activity size={18} />
-                     </button>
-                     <button onClick={togglePiP} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95" title="Picture-in-Picture">
-                         <PictureInPicture size={18} />
-                     </button>
-                     <button onClick={toggleTheaterMode} className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${isTheaterMode ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Toggle Theater Mode">
-                         <Tv size={18} />
-                     </button>
-                     <button onClick={toggleFullscreen} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95" title="Fullscreen">
-                         {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-                     </button>
-                 </div>
-             </div>
-          </div>
+          {showExitConfirm && ( <div className="absolute inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"><div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full"><h3 className="text-lg font-bold">Leave Party?</h3><p className="text-sm text-gray-400 my-4">You will be disconnected.</p><div className="flex gap-3 justify-end"><Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button><Button variant="danger" onClick={onBack}>Leave</Button></div></div></div> )}
+          <div className={`absolute top-0 right-0 z-20 p-4 transition-opacity ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}><Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button></div>
+          <div className="absolute inset-0 overflow-hidden pointer-events-none z-40"> {floatingEmojis.map(emoji => (<div key={emoji.id} className="absolute bottom-0 text-6xl animate-float" style={{left: `${emoji.x}%`, animationDuration: `${emoji.animationDuration}s`}}>{emoji.emoji}</div>))} <style>{`@keyframes float { 0% { transform: translateY(100%) scale(0.8); opacity: 0; } 10% { opacity: 1; transform: translateY(80%) scale(1.2); } 100% { transform: translateY(-150%) scale(1); opacity: 0; } } .animate-float { animation-name: float; animation-timing-function: ease-out; }`}</style></div>
+          {!hasStream && <div className="text-center"><div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 animate-blob"><Tv size={32} className="text-gray-500"/></div><p className="text-gray-500 font-medium">Waiting for stream...</p></div>}
+          <video ref={ambilightRef} className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60" muted />
+          {showNerdStats && ( <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono"><h4 className={`${activeTheme.primary} font-bold mb-1`}>STREAM STATS (RECV)</h4><div className="grid grid-cols-2 gap-x-4"><span>Resolution:</span><span>{stats.resolution}</span><span>FPS:</span><span>{Math.round(stats.fps)}</span><span>Bitrate:</span><span className="text-green-400">{stats.bitrate}</span><span>Latency:</span><span className="text-yellow-400">{stats.latency}</span><span>Packet Loss:</span><span className="text-red-400">{stats.packetLoss}</span></div></div> )}
+          {hasStream && !isPlaying && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30"><button onClick={togglePlay} className="bg-white/20 rounded-full p-6"><Play size={48} className="text-white fill-white ml-2"/></button></div>}
+          <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
+          {(isTheaterMode || isFullscreen) && <div className="absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60]"><Chat ref={chatRef} messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} isOverlay={true} inputVisible={controlsVisible} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} theme={activeTheme}/></div>}
+          <div className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}><div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10"><button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button><div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-24 transition-all"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none ${activeTheme.accent}`}/></div></div><div className="w-px h-6 bg-white/20"/> <div className="flex gap-2 items-center"><button onClick={() => handlePickerAction('start_picker')} disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')} className={`p-2 rounded-full ${activeTheme.primary}`} title="Suggest Movie"><Clapperboard size={18}/></button><button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 rounded-full ${showNerdStats ? activeTheme.primary : 'text-white'}`} title="Nerd Stats"><Activity size={18}/></button><button onClick={togglePiP} className="p-2 text-white" title="Picture-in-Picture"><PictureInPicture size={18}/></button><button onClick={toggleTheaterMode} className={`p-2 rounded-full ${isTheaterMode ? activeTheme.primary : 'text-white'}`} title="Theater Mode"><Tv size={18}/></button><button onClick={toggleFullscreen} className="p-2 text-white" title="Fullscreen">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button></div></div></div>
         </div>
       </div>
 
-      {/* CHAT/SIDEBAR - UPDATED to match HostRoom animations */}
-      <div className={`
-          bg-black/40 backdrop-blur-xl flex flex-col md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden
-          ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'w-80 opacity-100'}
-          ${activeTheme.border} ${activeTheme.glow}
-      `}>
-           <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
-               <div className="flex p-2 gap-2">
-                   <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>
-                   <button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'members' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>MEMBERS</button>
-               </div>
-               <div className="flex-1 relative overflow-hidden flex flex-col">
-                   {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
-                   {activeTab === 'members' && (
-                       <div className="p-4 space-y-2 overflow-y-auto">
-                           {members.map(m => (
-                               <div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
-                                   <div className="flex items-center gap-3">
-                                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.isHost ? `bg-gradient-to-br from-yellow-400 to-orange-500 text-black` : 'bg-white/10 text-white'}`}>
-                                           {m.name[0]}
-                                       </div>
-                                       <span className="text-sm font-medium text-gray-200">{m.name}</span>
-                                   </div>
-                                   {m.isHost && <Crown size={14} className="text-yellow-500 drop-shadow-md" />}
-                               </div>
-                           ))}
-                       </div>
-                   )}
-               </div>
-           </div>
+      {/* Sidebar */}
+      <div className={`bg-black/40 backdrop-blur-xl flex flex-col md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0' : 'w-80 opacity-100'} ${activeTheme.border} ${activeTheme.glow}`}>
+        <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
+          <div className="flex p-2 gap-2"><button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'chat' ? 'bg-white/10' : ''}`}>CHAT</button><button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'members' ? 'bg-white/10' : ''}`}>MEMBERS</button></div>
+          <div className="flex-1 relative min-h-0">{activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}{activeTab === 'members' && <div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl"><div className="flex items-center gap-3"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.isHost ? 'bg-yellow-400 text-black' : 'bg-white/10'}`}>{m.name[0]}</div><span>{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500"/>}</div>))}</div>}</div>
+        </div>
       </div>
     </div>
   );
