@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electron', {
   // System Info
   getTailscaleStatus: () => ipcRenderer.invoke('get-tailscale-status'),
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
+  setWindowOpacity: (opacity) => ipcRenderer.send('set-window-opacity', opacity),
 
   // Web Server
   toggleWebServer: (enable) => ipcRenderer.send('toggle-web-server', enable),
@@ -15,9 +16,7 @@ contextBridge.exposeInMainWorld('electron', {
   onHostClientConnected: (cb) => ipcRenderer.on('host-client-connected', (e, ...args) => cb(...args)),
   onHostClientDisconnected: (cb) => ipcRenderer.on('host-client-disconnected', (e, ...args) => cb(...args)),
   onHostSignalReceived: (cb) => ipcRenderer.on('host-signal-received', (e, ...args) => cb(...args)),
-  
-  // FIXED: Arguments are wrapped in a single object to match the main process handler.
-  // This was the cause of the desktop signaling failure.
+  // FIX: wrap args in object for correct IPC handling
   hostSendSignal: (socketId, data) => ipcRenderer.send('host-send-signal', { socketId, data }),
 
   // Guest-side logic

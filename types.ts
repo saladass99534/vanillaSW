@@ -1,4 +1,3 @@
-
 export enum AppMode {
   LANDING = 'LANDING',
   HOST = 'HOST',
@@ -81,6 +80,7 @@ declare global {
     electron: {
       getTailscaleStatus: () => Promise<any>;
       getDesktopSources: () => Promise<DesktopSource[]>;
+      setWindowOpacity: (opacity: number) => void;
       
       toggleWebServer: (enable: boolean) => void;
 

@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -161,6 +159,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [streamQuality, setStreamQuality] = useState<'1080p' | '1440p' | '4k'>('1080p');
   const [streamFps, setStreamFps] = useState<30 | 60>(60);
   const [streamBitrate, setStreamBitrate] = useState<number>(0); // 0 for automatic, in kbps
+  const [browserFix, setBrowserFix] = useState(false); // State for occlusion fix
   const streamBitrateRef = useRef(streamBitrate);
   useEffect(() => { streamBitrateRef.current = streamBitrate; }, [streamBitrate]);
   const [showAudioHelp, setShowAudioHelp] = useState(false);
@@ -193,6 +192,20 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 
   const activeTheme = THEMES[currentTheme] || THEMES['default'];
+
+  // Effect to control window opacity based on browser fix toggle
+  useEffect(() => {
+    if (electronAvailable) {
+        // 0.999 is functionally invisible but forces the window manager to keep rendering background apps
+        window.electron.setWindowOpacity(browserFix ? 0.999 : 1.0);
+    }
+    // Cleanup: Ensure opacity is reset to 1.0 when leaving the room
+    return () => {
+        if (electronAvailable) {
+            window.electron.setWindowOpacity(1.0);
+        }
+    };
+  }, [browserFix, electronAvailable]);
 
   const startRoom = () => {
     if (!electronAvailable) {
@@ -228,6 +241,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       if (electronAvailable) {
           window.electron.toggleWebServer(false);
           window.electron.stopHostServer(); 
+          window.electron.setWindowOpacity(1.0); // Reset opacity
       }
   };
 
@@ -424,10 +438,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                           if (report.type === 'outbound-rtp' && report.kind === 'video') {
                               if (videoRef.current) {
                                   if (lastStatsRef.current) {
-                                      // Reset detection: if the new byte count is less than the old one,
-                                      // it means the counter has reset. We should skip this calculation round.
                                       if (report.bytesSent < lastStatsRef.current.bytesSent) {
-                                          // Just update the reference for the next calculation and continue
                                           lastStatsRef.current = {
                                               timestamp: report.timestamp,
                                               bytesSent: report.bytesSent,
@@ -443,7 +454,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                           setStats(prev => ({ ...prev, bitrate: `${(bitrate / 1000).toFixed(1)} Mbps` }));
                                       }
                                   }
-                                  // Update the reference for the next interval
                                   lastStatsRef.current = {
                                       timestamp: report.timestamp,
                                       bytesSent: report.bytesSent,
@@ -606,7 +616,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                   maxWidth: maxWidth,
                   maxHeight: maxHeight,
                   minFrameRate: streamFps,
-                  maxFrameRate: streamFps
+                  maxFrameRate: streamFps,
+                  googPowerSaving: false, // Critical for stream stability when backgrounded
+                  googCpuOveruseDetection: false // Helps prevent throttling
               }
           };
 
@@ -883,70 +895,245 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                     <div className="flex items-center gap-3 text-left">
                         <Globe size={18} className={isWebStreamEnabled ? "text-green-400" : "text-gray-500"} />
                         <div>
-                            <p className="text-xs font-bold text-white">Web Browser Streaming</p>
-                            <p className="text-[10px] text-gray-400">Host a website for phones/tablets</p>
+                            <p className="text-sm font-bold text-white">Web Browser Streaming</p>
+                            <p className="text-xs text-gray-500">Allow viewers to join via browser (mobile/tablet).</p>
                         </div>
                     </div>
                     <button 
-                        onClick={() => setIsWebStreamEnabled(!isWebStreamEnabled)}
-                        className={`w-10 h-5 rounded-full relative transition-colors ${isWebStreamEnabled ? 'bg-green-600' : 'bg-gray-600'}`}
+                        onClick={() => setIsWebStreamEnabled(!isWebStreamEnabled)} 
+                        className={`w-10 h-5 rounded-full relative transition-colors ${isWebStreamEnabled ? 'bg-green-500' : 'bg-gray-600'}`}
                     >
-                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${isWebStreamEnabled ? 'left-6' : 'left-1'}`}></div>
+                        <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${isWebStreamEnabled ? 'left-6' : 'left-1'}`} />
                     </button>
                 </div>
 
-                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 mb-6 text-left flex gap-3">
-                    <AlertTriangle className="text-yellow-500 flex-shrink-0" size={20} />
-                    <p className="text-xs text-yellow-200/80">
-                        <strong>Windows Users:</strong> If friends can't connect, you must allow this app through <strong>Windows Defender Firewall</strong> (Public & Private).
-                    </p>
-                </div>
-
                 <Button className="w-full py-4" size="lg" onClick={startRoom} isLoading={isInitializing}>
-                    INITIALIZE SERVER
+                    {isInitializing ? 'INITIALIZING...' : 'INITIALIZE SERVER'}
                 </Button>
-                {!electronAvailable && <p className="text-red-500 text-xs mt-4">Error: Electron API unavailable.</p>}
              </div>
         </div>
       );
   }
 
-  const displayedSources = availableSources.filter(s => {
-      if (sourceTab === 'screen') return s.id.toLowerCase().startsWith('screen');
-      return s.id.toLowerCase().startsWith('window');
-  });
-
-  const controlsVisible = showControls || (isInputFocused && !isInputIdle);
-  const sidebarCollapsed = isTheaterMode || isFullscreen;
-
   return (
-    <div className="flex flex-col md:flex-row h-[100dvh] bg-[#313338] text-gray-100 overflow-hidden font-sans relative transition-colors duration-500">
+    <div className="flex h-screen bg-[#111] text-gray-100 overflow-hidden font-sans">
       
-      <div className={`flex flex-col relative bg-black min-w-0 transition-all duration-500 ease-in-out ${sidebarCollapsed ? 'w-full h-full' : 'w-full h-[35vh] md:h-full md:flex-1'}`}>
-        
-        {/* TOP BAR */}
-        <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between items-start pointer-events-none transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}>
-            <div className="flex gap-2 pointer-events-auto">
-                <div className={`bg-black/60 backdrop-blur border ${activeTheme.border} rounded-lg px-3 py-1.5 flex items-center gap-2 shadow-lg`}>
-                    <div className={`w-2 h-2 rounded-full ${members.length > 1 ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}></div>
-                    <span className="text-xs font-bold text-gray-200">{members.length - 1} Watching</span>
+      {/* SOURCE SELECTOR MODAL */}
+      {showSourceSelector && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-[#1e1f22] border border-white/10 rounded-2xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl">
+                  <div className="p-6 border-b border-white/10 flex justify-between items-center">
+                      <h3 className="text-xl font-bold text-white flex items-center gap-2"><ScreenShare size={20} className="text-blue-400"/> Select Source</h3>
+                      <button onClick={() => setShowSourceSelector(false)} className="text-gray-400 hover:text-white"><X size={24}/></button>
+                  </div>
+                  
+                  <div className="flex gap-4 px-6 py-4 border-b border-white/5">
+                      <button onClick={() => setSourceTab('screen')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'screen' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>Screens</button>
+                      <button onClick={() => setSourceTab('window')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'window' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>Windows</button>
+                      <div className="ml-auto flex items-center gap-2">
+                          <button onClick={prepareScreenShare} className={`p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all ${isRefreshingSources ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button>
+                      </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+                      {/* Using flex-wrap for Screens, but horizonal scroll for Windows */}
+                      {sourceTab === 'screen' ? (
+                          <div className="grid grid-cols-2 gap-4">
+                              {availableSources.filter(s => s.id.startsWith('screen')).map(source => (
+                                  <div 
+                                      key={source.id} 
+                                      onClick={() => setSelectedSourceId(source.id)}
+                                      className={`group relative aspect-video bg-black rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${selectedSourceId === source.id ? 'border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]' : 'border-white/10 hover:border-white/30'}`}
+                                  >
+                                      <img src={source.thumbnail} className="w-full h-full object-contain" />
+                                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3">
+                                          <span className="font-bold text-sm text-white truncate">{source.name}</span>
+                                      </div>
+                                      {selectedSourceId === source.id && (
+                                          <div className="absolute top-2 right-2 bg-blue-500 text-white p-1 rounded-full shadow-lg"><Check size={14} strokeWidth={4} /></div>
+                                      )}
+                                  </div>
+                              ))}
+                          </div>
+                      ) : (
+                          // Horizontal scrolling for windows to prevent squishing
+                          <div className="flex flex-wrap gap-4">
+                              {availableSources.filter(s => s.id.startsWith('window')).map(source => (
+                                  <div 
+                                      key={source.id} 
+                                      onClick={() => setSelectedSourceId(source.id)}
+                                      className={`group relative flex-shrink-0 w-64 h-48 bg-black rounded-xl overflow-hidden border-2 cursor-pointer transition-all flex flex-col ${selectedSourceId === source.id ? 'border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]' : 'border-white/10 hover:border-white/30'}`}
+                                  >
+                                      <div className="flex-1 bg-black/50 flex items-center justify-center p-2 overflow-hidden">
+                                          <img src={source.thumbnail} className="max-w-full max-h-full object-contain shadow-lg" />
+                                      </div>
+                                      <div className="h-10 bg-[#111] flex items-center px-3 border-t border-white/5">
+                                          <img src={source.thumbnail} className="w-4 h-4 rounded-sm mr-2 opacity-70" /> {/* Mini icon approximation */}
+                                          <span className="font-medium text-xs text-gray-300 truncate">{source.name}</span>
+                                      </div>
+                                      {selectedSourceId === source.id && (
+                                          <div className="absolute top-2 right-2 bg-blue-500 text-white p-1 rounded-full shadow-lg"><Check size={14} strokeWidth={4} /></div>
+                                      )}
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                  </div>
+
+                  <div className="p-6 border-t border-white/10 bg-[#151618] rounded-b-2xl">
+                        <div className="grid grid-cols-2 gap-6 mb-6">
+                            {/* LEFT COLUMN: Audio & Fixes */}
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase mb-2 block flex items-center gap-2">
+                                        Audio Source
+                                        <button onClick={() => setShowAudioHelp(!showAudioHelp)} className="text-gray-600 hover:text-white"><HelpCircle size={12}/></button>
+                                    </label>
+                                    <select 
+                                        value={audioSource} 
+                                        onChange={(e) => setAudioSource(e.target.value)}
+                                        className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"
+                                    >
+                                        <option value="system">System Audio (Loopback)</option>
+                                        <option value="none">No Audio (Video Only)</option>
+                                        <optgroup label="Input Devices (Microphones/Cables)">
+                                            {audioInputDevices.map(d => (
+                                                <option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0,5)}...`}</option>
+                                            ))}
+                                        </optgroup>
+                                    </select>
+                                    {showAudioHelp && (
+                                        <div className="mt-2 text-[10px] text-gray-400 bg-white/5 p-2 rounded border border-white/5">
+                                            For best results, install <b>VB-CABLE</b>. Set your browser/player output to 'CABLE Input' and select 'CABLE Output' here. This isolates the movie audio from your voice chat.
+                                        </div>
+                                    )}
+                                    {isMac && sourceTab === 'window' && audioSource === 'system' && (
+                                        <div className="mt-2 text-[10px] text-orange-400 bg-orange-500/10 p-2 rounded border border-orange-500/20 flex items-start gap-2">
+                                            <AlertTriangle size={12} className="mt-0.5 shrink-0"/>
+                                            <span>MacOS often blocks audio from individual windows. If audio is silent, try 'Screen' mode or a virtual cable.</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center justify-between bg-white/5 p-2 rounded-lg border border-white/5">
+                                    <div>
+                                        <p className="text-xs font-bold text-gray-300">Browser Stream Fix</p>
+                                        <p className="text-[10px] text-gray-500">Enable if stream freezes when backgrounded.</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => setBrowserFix(!browserFix)} 
+                                        className={`w-8 h-4 rounded-full relative transition-colors ${browserFix ? 'bg-blue-500' : 'bg-gray-600'}`}
+                                    >
+                                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${browserFix ? 'left-4.5' : 'left-0.5'}`} style={{ left: browserFix ? '18px' : '2px' }} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* RIGHT COLUMN: Quality Settings */}
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Resolution</label>
+                                    <div className="flex bg-black/50 rounded-lg p-1 border border-white/10">
+                                        {(['1080p', '1440p', '4k'] as const).map(q => (
+                                            <button 
+                                                key={q}
+                                                onClick={() => setStreamQuality(q)} 
+                                                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${streamQuality === q ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                            >
+                                                {q.toUpperCase()}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Frame Rate</label>
+                                        <select 
+                                            value={streamFps} 
+                                            onChange={(e) => setStreamFps(Number(e.target.value) as 30 | 60)}
+                                            className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"
+                                        >
+                                            <option value={30}>30 FPS</option>
+                                            <option value={60}>60 FPS (Silky Smooth)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Bitrate</label>
+                                        <select 
+                                            value={streamBitrate} 
+                                            onChange={(e) => setStreamBitrate(Number(e.target.value))}
+                                            className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"
+                                        >
+                                            <option value={0}>Automatic (Default)</option>
+                                            <option value={15000}>High (15 Mbps)</option>
+                                            <option value={30000}>Extreme (30 Mbps)</option>
+                                            <option value={50000}>Insane (50 Mbps)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                      <div className="flex justify-end gap-3">
+                          <Button variant="ghost" onClick={() => setShowSourceSelector(false)}>Cancel</Button>
+                          <Button disabled={!selectedSourceId} onClick={() => selectedSourceId && startStream(selectedSourceId)} className="px-8">
+                              {isSharing ? 'Switch Source' : 'Go Live'}
+                          </Button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {showExitConfirm && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+                <div className="flex items-center gap-3 mb-4 text-gray-200">
+                    <AlertCircle size={24} />
+                    <h3 className="text-lg font-bold">End Session?</h3>
                 </div>
-                {isWebStreamEnabled && (
-                    <div className="hidden md:flex bg-black/60 backdrop-blur border border-white/10 rounded-lg px-3 py-1.5 items-center gap-2 shadow-lg">
-                        <Globe size={12} className={activeTheme.primary} />
-                        <span className="text-xs font-mono text-gray-300">http://{myIp}:8080</span>
-                    </div>
-                )}
+                <p className="text-gray-400 text-sm mb-6">
+                    This will disconnect all viewers and stop the stream.
+                </p>
+                <div className="flex gap-3 justify-end">
+                    <Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button>
+                    <Button variant="danger" onClick={handleEndSession}>End Session</Button>
+                </div>
             </div>
-            <Button variant="secondary" size="sm" onClick={() => setShowExitConfirm(true)} className="pointer-events-auto bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all">
-                <Power size={14} className="mr-2" /> End Session
-            </Button>
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      <div className={`flex-1 flex flex-col relative transition-all duration-300 ${activeTab && !isTheaterMode && !isFullscreen ? 'mr-0' : 'mr-0'}`}>
+        
+        {/* Top Bar */}
+        <div className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-[#111]/50 backdrop-blur-sm z-20">
+            <div className="flex items-center gap-4">
+                <div className="flex flex-col">
+                    <h1 className="font-bold text-lg tracking-tight text-white flex items-center gap-2">
+                        SheiyuWatch <span className="text-[10px] bg-blue-600 px-1.5 py-0.5 rounded text-white font-mono">HOST</span>
+                    </h1>
+                    {isSharing && <span className="text-[10px] text-red-400 font-bold flex items-center gap-1 animate-pulse"><div className="w-1.5 h-1.5 bg-red-500 rounded-full"/> LIVE</span>}
+                </div>
+            </div>
+
+            <div className="flex items-center gap-6">
+               <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg border border-white/5">
+                   <Wifi size={14} className={myIp ? "text-green-400" : "text-gray-500"} />
+                   <span className="font-mono text-xs text-gray-300 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(myIp)} title="Click to Copy IP">{myIp || "Detecting IP..."}</span>
+               </div>
+               
+               <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2">
+                   <Power size={14} /> End Session
+               </Button>
+            </div>
         </div>
 
-        {/* VIDEO CONTAINER */}
+        {/* Stream Area */}
         <div 
             ref={containerRef}
-            className="flex-1 flex items-center justify-center relative bg-black overflow-hidden group"
+            className="flex-1 relative bg-black flex items-center justify-center overflow-hidden group select-none"
             onMouseMove={() => {
                 setShowControls(true);
                 resetInputIdleTimer();
@@ -954,248 +1141,100 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500);
             }}
         >
-          {/* FLOATING EMOJIS */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
-              {floatingEmojis.map(emoji => (
-                  <div 
-                      key={emoji.id}
-                      className="absolute bottom-0 text-6xl animate-float"
-                      style={{
-                          left: `${emoji.x}%`,
-                          animationDuration: `${emoji.animationDuration}s`,
-                          filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
-                          transform: 'perspective(500px) rotateX(10deg)'
-                      }}
-                  >
-                      {emoji.emoji}
-                  </div>
-              ))}
-              <style>{`
-                  @keyframes float {
-                      0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
-                      10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
-                      100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
-                  }
-                  .animate-float { animation-name: float; animation-timing-function: ease-out; }
-              `}</style>
-          </div>
-          {/* EXIT CONFIRMATION MODAL */}
-          {showExitConfirm && (
-            <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                <div className="bg-[#1e1f22] border border-red-500/20 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
-                    <div className="flex items-center gap-3 mb-4 text-red-400">
-                        <AlertCircle size={24} />
-                        <h3 className="text-lg font-bold">End Session?</h3>
+            {/* FLOATING EMOJIS */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
+                  {floatingEmojis.map(emoji => (
+                      <div 
+                          key={emoji.id}
+                          className="absolute bottom-0 text-6xl animate-float"
+                          style={{
+                              left: `${emoji.x}%`,
+                              animationDuration: `${emoji.animationDuration}s`,
+                              filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
+                              transform: 'perspective(500px) rotateX(10deg)'
+                          }}
+                      >
+                          {emoji.emoji}
+                      </div>
+                  ))}
+                  <style>{`
+                      @keyframes float {
+                          0% { transform: translateY(100%) perspective(500px) rotateX(10deg) scale(0.8); opacity: 0; }
+                          10% { opacity: 1; transform: translateY(80%) perspective(500px) rotateX(10deg) scale(1.2); }
+                          100% { transform: translateY(-150%) perspective(500px) rotateX(10deg) scale(1); opacity: 0; }
+                      }
+                      .animate-float { animation-name: float; animation-timing-function: ease-out; }
+                  `}</style>
+            </div>
+
+            {!isSharing && (
+                <div className="text-center">
+                    <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 animate-blob">
+                        <ScreenShare size={32} className="text-gray-500" />
                     </div>
-                    <p className="text-gray-300 text-sm mb-6">
-                        Are you sure you want to leave? This will end the stream and disconnect all {members.length - 1} connected viewers.
-                    </p>
-                    <div className="flex gap-3 justify-end">
-                        <Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button>
-                        <Button variant="danger" onClick={handleEndSession}>End Session</Button>
+                    <h3 className="text-xl font-bold text-gray-300 mb-2">Ready to Stream?</h3>
+                    <p className="text-gray-500 text-sm mb-8">Select a screen or application to start the party.</p>
+                    <Button size="lg" onClick={prepareScreenShare} className="mx-auto">Start Screen Share</Button>
+                </div>
+            )}
+
+            {/* AMBILIGHT GLOW LAYER */}
+            <video 
+                ref={ambilightRef}
+                className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-50 pointer-events-none transition-opacity duration-1000"
+                muted
+            />
+
+            <video 
+                ref={videoRef} 
+                className={`relative z-10 w-full h-full object-contain shadow-2xl ${!isSharing ? 'hidden' : ''}`}
+                style={{
+                    filter: `brightness(${videoFilters.brightness}%) contrast(${videoFilters.contrast}%) saturate(${videoFilters.saturate}%)`
+                }} 
+                autoPlay 
+                playsInline 
+            />
+
+            {showNerdStats && (
+                <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
+                    <h4 className={`${activeTheme.primary} font-bold mb-1 flex items-center gap-1`}><Activity size={10}/> STREAM STATS (OUT)</h4>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        <span>Resolution:</span> <span className="text-white">{stats.resolution}</span>
+                        <span>FPS:</span> <span className="text-white">{stats.fps}</span>
+                        <span>Bitrate:</span> <span className="text-green-400">{stats.bitrate}</span>
+                        <span>Latency:</span> <span className="text-yellow-400">{stats.latency}</span>
                     </div>
                 </div>
-            </div>
-          )}
+            )}
 
-          {/* SOURCE SELECTOR */}
-          {showSourceSelector && (
-            <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                <div className="bg-[#1e1f22] border border-white/10 rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
-                    <div className="p-6 border-b border-white/10 flex justify-between items-center">
-                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                            <ScreenShare className={activeTheme.primary} /> Select Content to Share
-                        </h2>
-                        <button onClick={() => setShowSourceSelector(false)} className="text-gray-400 hover:text-white"><X /></button>
+            {/* Video Settings Overlay */}
+            {showVideoSettings && isSharing && (
+                <div 
+                    className={`absolute bottom-24 left-1/2 -translate-x-1/2 bg-[#1e1f22]/90 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl z-30 w-64 animate-in slide-in-from-bottom-2`}
+                >
+                    <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-2">
+                        <h4 className="text-xs font-bold text-gray-400 uppercase">Adjustments</h4>
+                        <button onClick={() => setVideoFilters({ brightness: 100, contrast: 100, saturate: 100 })} title="Reset" className="text-gray-500 hover:text-white transition-colors"><RotateCcw size={12}/></button>
                     </div>
                     
-                    <div className="flex p-2 bg-black/20 mx-6 mt-6 rounded-lg">
-                        <button onClick={() => setSourceTab('screen')} className={`flex-1 py-2 rounded-md text-sm font-bold transition-colors ${sourceTab === 'screen' ? `${activeTheme.bg} text-white shadow-lg` : 'text-gray-400 hover:text-white'}`}>Screens</button>
-                        <button onClick={() => setSourceTab('window')} className={`flex-1 py-2 rounded-md text-sm font-bold transition-colors ${sourceTab === 'window' ? `${activeTheme.bg} text-white shadow-lg` : 'text-gray-400 hover:text-white'}`}>Windows</button>
-                    </div>
-
-                    <div className="p-6 flex gap-4 overflow-x-auto min-h-0 flex-1 scrollbar-hide">
-                        {isRefreshingSources ? (
-                            <div className="w-full py-20 flex flex-col items-center justify-center text-gray-500 animate-pulse">
-                                <RefreshCw className="animate-spin mb-2" size={32} />
-                                <p>Loading sources...</p>
-                            </div>
-                        ) : displayedSources.length === 0 ? (
-                            <div className="w-full py-10 flex flex-col items-center justify-center bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center">
-                                {isMac ? (
-                                    <>
-                                        <AlertTriangle className="text-red-400 mb-2" size={32} />
-                                        <h3 className="text-white font-bold mb-1">MacOS Permission Error</h3>
-                                        <p className="text-gray-400 text-xs mb-4 max-w-md">
-                                            macOS is blocking screen recording. Check permissions.
-                                        </p>
-                                    </>
-                                ) : (
-                                    <p className="text-gray-500">No sources found.</p>
-                                )}
-                            </div>
-                        ) : (
-                            displayedSources.map(source => (
-                                <button
-                                    key={source.id}
-                                    onClick={() => setSelectedSourceId(source.id)}
-                                    className={`flex-shrink-0 w-64 group relative rounded-xl overflow-hidden border-2 transition-all ${selectedSourceId === source.id ? `${activeTheme.border} ring-2 ring-opacity-30 bg-white/5` : 'border-white/5 hover:border-white/20 bg-[#2b2d31]'}`}
-                                >
-                                    <div className="h-32 flex items-center justify-center bg-black relative overflow-hidden">
-                                        <img src={source.thumbnail} alt={source.name} className="max-w-full max-h-full object-contain" />
-                                        {selectedSourceId === source.id && (
-                                            <div className={`absolute inset-0 bg-black/20 flex items-center justify-center`}>
-                                                <div className={`${activeTheme.bg} rounded-full p-2 shadow-lg`}><Check size={20} className="text-white" /></div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="p-3 text-left">
-                                        <p className="text-xs font-bold text-gray-200 truncate" title={source.name}>{source.name}</p>
-                                    </div>
-                                </button>
-                            ))
-                        )}
-                    </div>
-
-                    <div className="p-6 border-t border-white/10 bg-black/20 rounded-b-2xl flex flex-col gap-4">
-                        <div className="flex flex-col md:flex-row gap-4 justify-between items-end">
-                            <div className="flex flex-col gap-4 flex-1 w-full">
-                                 <div className="flex items-center gap-2">
-                                    <label className="text-xs font-bold text-gray-400 w-24">Stream Quality:</label>
-                                    <select 
-                                        value={streamQuality}
-                                        onChange={(e) => setStreamQuality(e.target.value as any)}
-                                        className="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:border-blue-500 outline-none cursor-pointer flex-1 max-w-[200px]"
-                                    >
-                                        <option value="1080p">1080p (Smooth)</option>
-                                        <option value="1440p">1440p (QHD)</option>
-                                        <option value="4k">4K (Ultra HD)</option>
-                                    </select>
-                                 </div>
-                                 <div className="flex items-center gap-2">
-                                    <label className="text-xs font-bold text-gray-400 w-24">Frame Rate:</label>
-                                    <select
-                                        value={streamFps}
-                                        onChange={(e) => setStreamFps(Number(e.target.value) as 30 | 60)}
-                                        className="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:border-blue-500 outline-none cursor-pointer flex-1 max-w-[200px]"
-                                    >
-                                        <option value={60}>60 FPS (Silky Smooth)</option>
-                                        <option value={30}>30 FPS (Standard)</option>
-                                    </select>
-                                 </div>
-                                 <div className="flex items-center gap-2">
-                                     <label className="text-xs font-bold text-gray-400 w-24">Bitrate:</label>
-                                     <select
-                                         value={streamBitrate}
-                                         onChange={(e) => setStreamBitrate(Number(e.target.value))}
-                                         className="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:border-blue-500 outline-none cursor-pointer flex-1 max-w-[200px]"
-                                     >
-                                         <option value={0}>Automatic (Default)</option>
-                                         <option value={15000}>High (15 Mbps)</option>
-                                         <option value={30000}>Extreme (30 Mbps)</option>
-                                         <option value={50000}>Insane (50 Mbps)</option>
-                                     </select>
-                                 </div>
-
-                                 <div className="flex items-center gap-2">
-                                    <div className="flex items-center gap-1 w-24">
-                                        <label className="text-xs font-bold text-gray-400">Audio Source:</label>
-                                        <div 
-                                            className="relative flex items-center"
-                                            onMouseEnter={() => setShowAudioHelp(true)}
-                                            onMouseLeave={() => setShowAudioHelp(false)}
-                                        >
-                                            <HelpCircle size={12} className="text-gray-500 cursor-help" />
-                                            {showAudioHelp && (
-                                                <div className="absolute bottom-full left-0 mb-2 w-64 p-3 bg-black border border-white/20 rounded-lg text-[10px] text-gray-300 shadow-xl z-50 animate-in fade-in duration-200">
-                                                    <p className="mb-2"><strong className="text-white">How to isolate browser audio?</strong></p>
-                                                    <ol className="list-decimal pl-3 space-y-1">
-                                                        <li>Install <strong>VB-CABLE</strong> driver.</li>
-                                                        <li>Open Windows <strong>"Volume mixer"</strong>.</li>
-                                                        <li>Change your Browser's Output to <strong>CABLE Input</strong>.</li>
-                                                        <li>Select <strong>CABLE Output</strong> in this menu.</li>
-                                                    </ol>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <select 
-                                        value={audioSource} 
-                                        onChange={(e) => setAudioSource(e.target.value)}
-                                        className="bg-black/40 border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:border-blue-500 outline-none cursor-pointer flex-1 max-w-[300px]"
-                                    >
-                                        <option value="none">No Audio (Silent)</option>
-                                        <option value="system">System Audio (Entire PC)</option>
-                                        <optgroup label="Specific Inputs (For Isolation)">
-                                            {audioInputDevices.map(device => (
-                                                <option key={device.deviceId} value={device.deviceId}>
-                                                    {device.label || `Microphone ${device.deviceId.slice(0,5)}...`}
-                                                </option>
-                                            ))}
-                                        </optgroup>
-                                    </select>
-                                 </div>
-                            </div>
-
-                            <div className="flex gap-3">
-                                <button onClick={prepareScreenShare} className="p-2 bg-white/10 rounded-lg hover:bg-white/20 text-gray-400 hover:text-white" title="Refresh Sources">
-                                    <RefreshCw size={20} />
-                                </button>
-                                <Button variant="ghost" onClick={() => setShowSourceSelector(false)}>Cancel</Button>
-                                <Button disabled={!selectedSourceId} onClick={() => startStream(selectedSourceId!)}>
-                                    Go Live
-                                </Button>
-                            </div>
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-[10px] text-gray-400 font-medium"><span>Brightness</span><span>{videoFilters.brightness}%</span></div>
+                            <input type="range" min="50" max="150" value={videoFilters.brightness} onChange={(e) => setVideoFilters(p => ({...p, brightness: Number(e.target.value)}))} className={`w-full h-1 rounded-lg appearance-none cursor-pointer bg-white/20 ${activeTheme.accent}`} />
+                        </div>
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-[10px] text-gray-400 font-medium"><span>Contrast</span><span>{videoFilters.contrast}%</span></div>
+                            <input type="range" min="50" max="150" value={videoFilters.contrast} onChange={(e => setVideoFilters(p => ({...p, contrast: Number(e.target.value)})))} className={`w-full h-1 rounded-lg appearance-none cursor-pointer bg-white/20 ${activeTheme.accent}`} />
+                        </div>
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-[10px] text-gray-400 font-medium"><span>Saturation</span><span>{videoFilters.saturate}%</span></div>
+                            <input type="range" min="0" max="200" value={videoFilters.saturate} onChange={(e => setVideoFilters(p => ({...p, saturate: Number(e.target.value)})))} className={`w-full h-1 rounded-lg appearance-none cursor-pointer bg-white/20 ${activeTheme.accent}`} />
                         </div>
                     </div>
                 </div>
-            </div>
-          )}
+            )}
 
-          {!isSharing ? (
-            <div className="text-center relative z-10">
-                <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
-                    <ScreenShare size={32} className="text-gray-500" />
-                </div>
-                <Button size="lg" onClick={prepareScreenShare} className="animate-in zoom-in duration-300">
-                    Start Screen Share
-                </Button>
-                <p className="text-gray-500 text-xs mt-4">Select a Screen, Window, or Tab</p>
-            </div>
-          ) : (
-             <>
-                {/* AMBILIGHT LAYER */}
-                <video 
-                    ref={ambilightRef}
-                    className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60 pointer-events-none"
-                    muted
-                />
-
-                {showNerdStats && (
-                    <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
-                        <h4 className={`${activeTheme.primary} font-bold mb-1 flex items-center gap-1`}><Activity size={10}/> STREAM STATS (SEND)</h4>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                            <span>Resolution:</span> <span className="text-white">{stats.resolution}</span>
-                            <span>FPS:</span> <span className="text-white">{Math.round(stats.fps)}</span>
-                            <span>Bitrate:</span> <span className="text-green-400">{stats.bitrate}</span>
-                            <span>Latency:</span> <span className="text-yellow-400">{stats.latency}</span>
-                        </div>
-                    </div>
-                )}
-
-                <video 
-                    ref={videoRef} 
-                    className="relative z-10 w-full h-full object-contain drop-shadow-2xl" 
-                    autoPlay 
-                    playsInline 
-                    style={{
-                        filter: `brightness(${videoFilters.brightness}%) contrast(${videoFilters.contrast}%) saturate(${videoFilters.saturate}%)`
-                    }}
-                />
-             </>
-          )}
-
-          {(isTheaterMode || isFullscreen) && (
+            {(isTheaterMode || isFullscreen) && (
                <div className={`absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60] flex flex-col justify-end transition-opacity duration-300`}>
                   <Chat 
                     ref={chatRef}
@@ -1203,141 +1242,100 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                     onSendMessage={handleSendMessage} 
                     onAddReaction={() => {}}
                     onHypeEmoji={handleHypeAction}
-                    onPickerAction={handlePickerInteraction}
-                    myId="HOST" 
+                    onPickerAction={handlePickerInteraction} 
+                    myId={'HOST'} 
                     isOverlay={true} 
-                    inputVisible={controlsVisible}
+                    inputVisible={(showControls || (isInputFocused && !isInputIdle))} 
                     onInputFocus={() => setIsInputFocused(true)}
                     onInputBlur={() => setIsInputFocused(false)}
                     onInputChange={resetInputIdleTimer}
                     theme={activeTheme}
                   />
               </div>
-          )}
+            )}
 
-          {/* GLASS HUD */}
-          <div className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all duration-500 ${controlsVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`}>
-             <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-black/50 hover:scale-[1.02] transition-all">
-                 
-                 {/* Volume */}
-                 <div className="flex items-center gap-2 group/vol">
-                    <button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95">
-                        {localVolume === 0 ? <VolumeX size={20} className="text-red-400" /> : <Volume2 size={20} className="text-gray-300 group-hover/vol:text-white" />}
-                    </button>
-                    <div className="w-0 overflow-hidden group-hover/vol:w-24 transition-all duration-300 flex items-center">
-                        <input 
-                            type="range" min="0" max="1" step="0.05" 
-                            value={localVolume} onChange={(e) => setLocalVolume(parseFloat(e.target.value))}
-                            className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`}
-                        />
-                    </div>
-                 </div>
-
-                 <div className="w-px h-6 bg-white/10"></div>
-
-                 <div className="flex gap-2">
-                     <button 
-                        onClick={() => setShowVideoSettings(!showVideoSettings)} 
-                        className={`p-2.5 rounded-full transition-all active:scale-95 ${showVideoSettings ? `${activeTheme.bg} text-white shadow-lg ${activeTheme.glow}` : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white'}`}
-                        title="Video Settings"
-                     >
-                         <Sliders size={18} />
-                     </button>
-                     <button 
-                        onClick={takeScreenshot} 
-                        className="p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-gray-300 transition-all hover:text-white active:scale-95"
-                        title="Take Screenshot"
-                     >
-                         <Camera size={18} />
-                     </button>
-                     <button 
-                        onClick={startSharedPicker} 
-                        disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')}
-                        className={`p-2.5 rounded-full transition-all active:scale-95 disabled:cursor-not-allowed disabled:text-gray-600 disabled:bg-white/5 ${ (pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'bg-white/5 text-gray-600' : `${activeTheme.primary} bg-white/5 hover:bg-white/10 hover:${activeTheme.primary.replace('text-', 'text-opacity-80')}`}`}
-                        title="Suggest Movie"
-                     >
-                         <Clapperboard size={18} />
-                     </button>
-                     {isSharing && (
-                        <button
-                            onClick={stopSharing}
-                            className="p-2.5 rounded-full bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white transition-all active:scale-95 shadow-lg shadow-red-900/20"
-                            title="Stop Stream"
-                        >
-                            <ScreenShareOff size={18} />
+            {/* Glass Control Bar */}
+            {isSharing && (
+                <div className={`absolute bottom-8 z-50 transition-all duration-500 ${showControls || (isInputFocused && !isInputIdle) ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`}>
+                    <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-black/50 hover:scale-[1.02] transition-all">
+                        
+                        <button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">
+                            {localVolume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}
                         </button>
-                     )}
-                 </div>
 
-                 <div className="w-px h-6 bg-white/10"></div>
+                        <div className="w-px h-6 bg-white/10"></div>
 
-                 <div className="flex gap-2 items-center">
-                     <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${showNerdStats ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Nerd Stats">
-                         <Activity size={18} />
-                     </button>
-                     <button onClick={togglePiP} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95" title="Picture-in-Picture">
-                         <PictureInPicture size={18} />
-                     </button>
-                     <button onClick={toggleTheaterMode} className={`p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 ${isTheaterMode ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Theater Mode">
-                         <Tv size={18} />
-                     </button>
-                     <button onClick={toggleFullscreen} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95" title="Fullscreen">
-                         {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-                     </button>
-                 </div>
-             </div>
-          </div>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={startSharedPicker} 
+                                disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')}
+                                className={`p-2 hover:bg-white/10 rounded-full transition-colors ${(pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'text-gray-600 cursor-not-allowed' : `${activeTheme.primary}`}`}
+                                title="Suggest Movie"
+                            >
+                                <Clapperboard size={20} />
+                            </button>
+                            <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${showNerdStats ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Nerd Stats">
+                                <Activity size={20} />
+                            </button>
+                            <button onClick={() => setShowVideoSettings(!showVideoSettings)} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${showVideoSettings ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Video Settings">
+                                <Sliders size={20} />
+                            </button>
+                            <button onClick={takeScreenshot} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors" title="Screenshot">
+                                <Camera size={20} />
+                            </button>
+                            <button onClick={togglePiP} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95" title="Picture-in-Picture">
+                                <PictureInPicture size={20} />
+                            </button>
+                            <button onClick={toggleTheaterMode} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${isTheaterMode ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Toggle Theater Mode">
+                                <Tv size={20} />
+                            </button>
+                            <button onClick={toggleFullscreen} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors" title="Fullscreen">
+                                {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+                            </button>
+                        </div>
 
-          {showVideoSettings && (
-              <div className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-[#1e1f22]/90 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl z-30 w-64 animate-in slide-in-from-bottom-4 fade-in">
-                  <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-2">
-                      <h4 className="text-xs font-bold text-gray-400 uppercase">Adjustments</h4>
-                      <button onClick={() => setVideoFilters({ brightness: 100, contrast: 100, saturate: 100 })} title="Reset" className="text-gray-500 hover:text-white transition-colors"><RotateCcw size={12}/></button>
-                  </div>
-                  <div className="space-y-4">
-                      <div className="space-y-1">
-                          <div className="flex justify-between text-[10px] text-gray-400 font-medium"><span>Brightness</span><span>{videoFilters.brightness}%</span></div>
-                          <input type="range" min="50" max="150" value={videoFilters.brightness} onChange={e => setVideoFilters(p => ({...p, brightness: Number(e.target.value)}))} className={`w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer ${activeTheme.accent}`} />
-                      </div>
-                      <div className="space-y-1">
-                          <div className="flex justify-between text-[10px] text-gray-400 font-medium"><span>Contrast</span><span>{videoFilters.contrast}%</span></div>
-                          <input type="range" min="50" max="150" value={videoFilters.contrast} onChange={e => setVideoFilters(p => ({...p, contrast: Number(e.target.value)}))} className={`w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer ${activeTheme.accent}`} />
-                      </div>
-                      <div className="space-y-1">
-                          <div className="flex justify-between text-[10px] text-gray-400 font-medium"><span>Saturation</span><span>{videoFilters.saturate}%</span></div>
-                          <input type="range" min="0" max="200" value={videoFilters.saturate} onChange={e => setVideoFilters(p => ({...p, saturate: Number(e.target.value)}))} className={`w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer ${activeTheme.accent}`} />
-                      </div>
-                  </div>
-              </div>
-          )}
+                        <div className="w-px h-6 bg-white/10"></div>
+
+                        <button onClick={stopSharing} className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2">
+                            <ScreenShareOff size={14} /> STOP
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
       </div>
 
-      <div className={`bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-3xl border ${activeTheme.border} ${activeTheme.glow} shadow-2xl ${sidebarCollapsed ? 'w-0 m-0 opacity-0 border-0 pointer-events-none' : 'w-auto md:w-80 mx-4 mb-4 md:m-4 opacity-100 border'} overflow-hidden`}>
-           <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
-               <div className="flex p-2 gap-2">
-                   <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>
-                   <button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'members' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>MEMBERS</button>
-               </div>
-               <div className="flex-1 overflow-hidden relative">
-                   {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleHypeAction} onPickerAction={handlePickerInteraction} myId="HOST" theme={activeTheme} /></div>}
-                   {activeTab === 'members' && (
-                       <div className="p-4 space-y-2">
-                           {members.map(m => (
-                               <div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
-                                   <div className="flex items-center gap-3">
-                                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.isHost ? `bg-gradient-to-br from-yellow-400 to-orange-500 text-black` : 'bg-white/10 text-white'}`}>
-                                           {m.name[0]}
-                                       </div>
-                                       <span className="text-sm font-medium text-gray-200">{m.name}</span>
-                                   </div>
-                                   {m.isHost && <Crown size={14} className="text-yellow-500 drop-shadow-md" />}
-                               </div>
-                           ))}
-                       </div>
-                   )}
-               </div>
-           </div>
+      {/* Sidebar - Collapsible for Theater Mode */}
+      <div className={`
+          bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l border-white/5 shadow-2xl overflow-hidden
+          ${isTheaterMode || isFullscreen ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'w-80 opacity-100'}
+      `}>
+          <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${isTheaterMode || isFullscreen ? 'translate-x-full' : 'translate-x-0'}`}>
+            <div className="flex p-2 gap-2">
+                <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button>
+                <button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'members' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>MEMBERS</button>
+            </div>
+
+            <div className="flex-1 relative overflow-hidden flex flex-col">
+                {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleHypeAction} onPickerAction={handlePickerInteraction} myId={'HOST'} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
+                
+                {activeTab === 'members' && (
+                    <div className="p-4 space-y-2 overflow-y-auto">
+                        {members.map(m => (
+                            <div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.isHost ? `bg-gradient-to-br from-yellow-400 to-orange-500 text-black` : 'bg-white/10 text-white'}`}>
+                                        {m.name[0]}
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-200">{m.name}</span>
+                                </div>
+                                {m.isHost && <Crown size={14} className="text-yellow-500 drop-shadow-md" />}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+          </div>
       </div>
     </div>
   );

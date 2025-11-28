@@ -46,21 +46,21 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    fullscreen: true,
-    show: false,
+    fullscreen: false, // Windowed mode
+    show: false,       // Start hidden to prevent visual resizing glitches
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'), // Corrected to .cjs
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, 
-      webSecurity: false,
-      backgroundThrottling: false
+      webSecurity: false 
     },
     autoHideMenuBar: true,
     backgroundColor: '#000000',
     title: "SheiyuWatch"
   });
 
+  // Maximize the window to fit the device screen perfectly, then show it
   mainWindow.maximize();
   mainWindow.show();
 
@@ -96,6 +96,13 @@ ipcMain.on('toggle-web-server', (event, enable) => {
         }
     } else {
         stopWebServer();
+    }
+});
+
+// Window Opacity Control (Occlusion Fix)
+ipcMain.on('set-window-opacity', (event, opacity) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setOpacity(opacity);
     }
 });
 
@@ -145,7 +152,8 @@ ipcMain.handle('get-desktop-sources', async () => {
   try {
     const sources = await desktopCapturer.getSources({ 
       types: ['window', 'screen'],
-      thumbnailSize: { width: 1920, height: 1080 }
+      thumbnailSize: { width: 1920, height: 1080 },
+      fetchWindowIcons: true // REQUIRED for Windows 10/11 compatibility in Electron 28+
     });
     return sources.map(source => ({
       id: source.id,
@@ -235,8 +243,6 @@ ipcMain.on('stop-host-server', () => {
     }
 });
 
-// This is the handler for signals coming FROM the host's UI
-// The data object received here must be correct
 ipcMain.on('host-send-signal', (event, { socketId, data }) => {
   const ws = connectedClients.get(socketId);
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -258,46 +264,3 @@ ipcMain.on('connect-to-host', (event, ip, port) => {
     guestWs = new WebSocket(url);
 
     guestWs.on('open', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('guest-connected');
-      }
-    });
-
-    guestWs.on('message', (data) => {
-      try {
-        const parsed = JSON.parse(data);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('guest-signal-received', parsed);
-        }
-      } catch (e) {
-        console.error("Guest parse error", e);
-      }
-    });
-
-    guestWs.on('error', (err) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('guest-error', err.message);
-      }
-    });
-
-    guestWs.on('close', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('guest-disconnected');
-      }
-    });
-
-  } catch (error) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('guest-error', error.message);
-    }
-  }
-});
-
-ipcMain.on('guest-send-signal', (event, data) => {
-  if (guestWs && guestWs.readyState === WebSocket.OPEN) {
-    guestWs.send(JSON.stringify(data));
-  }
-});
-
-
-

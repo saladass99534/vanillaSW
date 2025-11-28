@@ -1,5 +1,5 @@
 {
-  "name": "SheiyuWatchLatest",
+  "name": "VanillaSW",
   "description": "High-quality P2P screen sharing and watch party app designed for Tailscale networks.",
   "requestFramePermissions": [
     "microphone",
