@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -920,7 +921,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             <div className="pointer-events-auto flex items-center gap-4">
                <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg">
                    <Wifi size={14} className={myIp ? "text-green-400" : "text-gray-500"} />
-                   <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(myIp)} title="Click to Copy IP">{myIp || "Detecting IP..."}</span>
+                   <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(`${myIp}:8080`)} title="Click to Copy IP">{myIp ? `${myIp}:8080` : "Detecting IP..."}</span>
                </div>
                
                <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600">
@@ -958,7 +959,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
-                            {/* Using flex-wrap for Screens, horizontal scroll for Windows */}
+                            {/* Using flex-wrap for Screens, responsive grid for Windows */}
                             {sourceTab === 'screen' ? (
                                 <div className="grid grid-cols-2 gap-4">
                                     {availableSources.filter(s => s.id.startsWith('screen')).map(source => (
@@ -978,13 +979,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                     ))}
                                 </div>
                             ) : (
-                                // UPDATED: Horizontal scrolling carousel for windows
-                                <div className="flex overflow-x-auto gap-4 pb-4">
+                                // UPDATED: Responsive grid for windows to use vertical space
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                     {availableSources.filter(s => s.id.startsWith('window')).map(source => (
                                         <div 
                                             key={source.id} 
                                             onClick={() => setSelectedSourceId(source.id)}
-                                            className={`group relative flex-shrink-0 w-64 h-48 bg-black rounded-xl overflow-hidden border-2 cursor-pointer transition-all flex flex-col ${selectedSourceId === source.id ? 'border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]' : 'border-white/10 hover:border-white/30'}`}
+                                            className={`group relative w-full h-48 bg-black rounded-xl overflow-hidden border-2 cursor-pointer transition-all flex flex-col ${selectedSourceId === source.id ? 'border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]' : 'border-white/10 hover:border-white/30'}`}
                                         >
                                             <div className="flex-1 bg-black/50 flex items-center justify-center p-2 overflow-hidden">
                                                 <img src={source.thumbnail} className="max-w-full max-h-full object-contain shadow-lg" />
@@ -1265,6 +1266,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       <div className={`
           bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l border-white/5 shadow-2xl overflow-hidden
           ${isTheaterMode || isFullscreen ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'w-80 opacity-100'}
+          border ${activeTheme.border} ${activeTheme.glow}
       `}>
           <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${isTheaterMode || isFullscreen ? 'translate-x-full' : 'translate-x-0'}`}>
             <div className="flex p-2 gap-2">
