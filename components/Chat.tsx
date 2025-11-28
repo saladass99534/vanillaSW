@@ -353,11 +353,11 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
         )}
       </div>
 
-      <div className={`relative z-20 flex-shrink-0 transition-all duration-300 transform ${
+      <div className={`relative z-20 flex-shrink-0 ${
           isOverlay 
-            ? `px-4 ${inputVisible ? 'opacity-100 pointer-events-auto translate-y-0 pb-4' : 'opacity-0 pointer-events-none translate-y-4'}` 
-            : 'px-4 pt-4'
-        }`}>
+            ? `transition-all duration-300 transform px-4 ${inputVisible ? 'opacity-100 pointer-events-auto translate-y-0 pb-4' : 'opacity-0 pointer-events-none translate-y-4'}` 
+            : 'px-4 pt-4 pb-2' // FIXED: Removed transition/transform here. Added pb-2 to prevent gap issues.
+      }`}>
         
         {showPicker && (
              <div className={`absolute bottom-full mb-2 left-4 w-64 bg-[#1e1f22] border border-white/10 rounded-xl shadow-2xl z-30 overflow-hidden flex flex-col h-64 animate-in slide-in-from-bottom-2 backdrop-blur-xl`}>
