@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -233,7 +232,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         setMyIp("127.0.0.1");
     });
 
-    // Start with web server off, user toggles in UI
     window.electron.startHostServer(65432);
   };
 
@@ -880,6 +878,24 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 <Zap className="w-12 h-12 text-blue-400 mx-auto mb-4" />
                 <h2 className="text-3xl font-bold text-white mb-2">Initialize Host</h2>
                 <p className="text-gray-400 mb-6 text-sm">Start a secure P2P server on your local network.</p>
+                
+                {/* RESTORED WEB MODE TOGGLE */}
+                <div className="flex items-center justify-between bg-black/30 p-3 rounded-xl mb-4 border border-white/5">
+                    <div className="flex items-center gap-3 text-left">
+                        <Globe size={18} className={isWebStreamEnabled ? "text-green-400" : "text-gray-500"} />
+                        <div>
+                            <p className="text-sm font-bold text-white">Web Browser Streaming</p>
+                            <p className="text-xs text-gray-500">Allow viewers to join via browser (mobile/tablet).</p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={() => setIsWebStreamEnabled(!isWebStreamEnabled)} 
+                        className={`w-10 h-5 rounded-full relative transition-colors ${isWebStreamEnabled ? 'bg-green-500' : 'bg-gray-600'}`}
+                    >
+                        <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${isWebStreamEnabled ? 'left-6' : 'left-1'}`} />
+                    </button>
+                </div>
+
                 <Button className="w-full py-4" size="lg" onClick={startRoom} isLoading={isInitializing}>
                     {isInitializing ? 'INITIALIZING...' : 'INITIALIZE SERVER'}
                 </Button>
@@ -921,7 +937,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             <div className="pointer-events-auto flex items-center gap-4">
                <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg">
                    <Wifi size={14} className={myIp ? "text-green-400" : "text-gray-500"} />
-                   <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(`${myIp}:8080`)} title="Click to Copy IP">{myIp ? `${myIp}:8080` : "Detecting IP..."}</span>
+                   <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(myIp ? `${myIp}:8080` : '')} title="Click to Copy IP">{myIp ? `${myIp}:8080` : "Detecting IP..."}</span>
                </div>
                
                <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600">
@@ -1239,11 +1255,11 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         
                         <div className="w-px h-6 bg-white/10 mx-2"></div>
 
-                        {/* Web Stream Toggle in Bottom Bar */}
+                        {/* REPLACED BUTTON: Browser Stream Fix Toggle (using Globe icon as requested) */}
                         <button 
-                            onClick={() => setIsWebStreamEnabled(!isWebStreamEnabled)}
-                            className={`p-2 hover:bg-white/10 rounded-full transition-colors ${isWebStreamEnabled ? 'text-green-400' : 'text-gray-500 hover:text-gray-400'}`}
-                            title={isWebStreamEnabled ? "Web Streaming ON" : "Web Streaming OFF"}
+                            onClick={() => setBrowserFix(!browserFix)}
+                            className={`p-2 hover:bg-white/10 rounded-full transition-colors ${browserFix ? 'text-blue-400' : 'text-gray-500 hover:text-gray-400'}`}
+                            title={browserFix ? "Browser Fix ON (Anti-Freeze)" : "Browser Fix OFF"}
                         >
                             <Globe size={20} />
                         </button>
@@ -1264,9 +1280,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
       {/* Sidebar - Collapsible for Theater Mode */}
       <div className={`
-          bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l border-white/5 shadow-2xl overflow-hidden
+          bg-black/40 backdrop-blur-xl flex flex-col flex-1 md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden
           ${isTheaterMode || isFullscreen ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'w-80 opacity-100'}
-          border ${activeTheme.border} ${activeTheme.glow}
+          ${activeTheme.border} ${activeTheme.glow}
       `}>
           <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${isTheaterMode || isFullscreen ? 'translate-x-full' : 'translate-x-0'}`}>
             <div className="flex p-2 gap-2">
