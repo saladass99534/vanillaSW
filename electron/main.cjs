@@ -264,3 +264,45 @@ ipcMain.on('connect-to-host', (event, ip, port) => {
     guestWs = new WebSocket(url);
 
     guestWs.on('open', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('guest-connected');
+      }
+    });
+
+    guestWs.on('message', (data) => {
+      try {
+        const parsed = JSON.parse(data);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('guest-signal-received', parsed);
+        }
+      } catch (e) {
+        console.error("Guest parse error", e);
+      }
+    });
+
+    guestWs.on('error', (err) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('guest-error', err.message);
+      }
+    });
+
+    guestWs.on('close', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('guest-disconnected');
+      }
+    });
+
+  } catch (error) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('guest-error', error.message);
+    }
+  }
+});
+
+ipcMain.on('guest-send-signal', (event, data) => {
+  if (guestWs && guestWs.readyState === WebSocket.OPEN) {
+    guestWs.send(JSON.stringify(data));
+  }
+});
+
+// --- END OF FILE ---

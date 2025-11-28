@@ -30,3 +30,4 @@ contextBridge.exposeInMainWorld('electron', {
   // Cleanup
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
 });
+// --- END OF FILE ---
