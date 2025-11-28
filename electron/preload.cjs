@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld('electron', {
   getTailscaleStatus: () => ipcRenderer.invoke('get-tailscale-status'),
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
   setWindowOpacity: (opacity) => ipcRenderer.send('set-window-opacity', opacity),
+  
+  // NEW: File Picker
+  openVideoFile: () => ipcRenderer.invoke('open-video-file'),
 
   // Web Server
   toggleWebServer: (enable) => ipcRenderer.send('toggle-web-server', enable),
@@ -16,7 +19,6 @@ contextBridge.exposeInMainWorld('electron', {
   onHostClientConnected: (cb) => ipcRenderer.on('host-client-connected', (e, ...args) => cb(...args)),
   onHostClientDisconnected: (cb) => ipcRenderer.on('host-client-disconnected', (e, ...args) => cb(...args)),
   onHostSignalReceived: (cb) => ipcRenderer.on('host-signal-received', (e, ...args) => cb(...args)),
-  // FIX: wrap args in object for correct IPC handling
   hostSendSignal: (socketId, data) => ipcRenderer.send('host-send-signal', { socketId, data }),
 
   // Guest-side logic
@@ -30,4 +32,3 @@ contextBridge.exposeInMainWorld('electron', {
   // Cleanup
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
 });
-// --- END OF FILE ---
