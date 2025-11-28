@@ -110,7 +110,8 @@ ipcMain.on('set-window-opacity', (event, opacity) => {
 ipcMain.handle('open-video-file', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openFile'],
-    filters: [{ name: 'Movies', extensions: ['mp4', 'mkv', 'webm', 'mov'] }]
+    // UPDATED FILTERS: Added m4v, ts, mts
+    filters: [{ name: 'Movies', extensions: ['mp4', 'mkv', 'webm', 'mov', 'm4v', 'ts', 'mts'] }]
   });
   if (canceled) {
     return null;
@@ -252,3 +253,4 @@ ipcMain.on('connect-to-host', (event, ip, port) => {
 ipcMain.on('guest-send-signal', (event, data) => {
   if (guestWs && guestWs.readyState === WebSocket.OPEN) guestWs.send(JSON.stringify(data));
 });
+
