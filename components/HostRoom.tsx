@@ -756,30 +756,3 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     </div>
   );
 };
-
-### Step 3: Update `components/ViewerRoom.tsx`
-We need the viewer to listen for the subtitle data and display it.
-
-**Add this to your `ViewerRoom.tsx`:**
-
-1.  **State:** `const [subtitleUrl, setSubtitleUrl] = useState<string | null>(null);`
-2.  **Handler:** Inside `handleSignal`'s `p.on('data')` block, add:
-    ```tsx
-    if (msg.type === 'subtitle_track') {
-        const blob = new Blob([msg.payload], { type: 'text/vtt' });
-        const url = URL.createObjectURL(blob);
-        setSubtitleUrl(url);
-    }
-    // Optional: Sync CC Size
-    if (msg.type === 'cc_size') {
-        // You can add state for this if you want viewer size to sync
-    }
-    ```
-3.  **JSX:** Add the track to the video element.
-    ```tsx
-    <video ref={videoRef} ... >
-        {subtitleUrl && <track label="English" kind="subtitles" src={subtitleUrl} default />}
-    </video>
-    ```
-
-This is the complete fix. It ensures **everyone sees subtitles** (by sending the text file itself) and **you see them too** (by reading the file properly in the backend).
