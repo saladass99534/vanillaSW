@@ -127,6 +127,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
 
+  // NEW: Movie Title State
+  const [movieTitle, setMovieTitle] = useState<string>("");
+
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlayingFile, setIsPlayingFile] = useState(false);
@@ -369,13 +372,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       return () => { if (statsIntervalRef.current) clearInterval(statsIntervalRef.current); };
   }, [isSharing, showNerdStats]);
 
-  // Audio Routing Logic
+  // --- FIX: AUDIO & SUBTITLE HANDLING ---
   useEffect(() => {
+      // 1. Ensure file source is always loud for stream capture
       if (fileVideoRef.current) fileVideoRef.current.volume = 1.0; 
+      
+      // 2. Control PREVIEW volume with slider (for host to hear)
       if (videoRef.current) {
           if (sourceTab === 'file') {
-            videoRef.current.volume = 0;
-            videoRef.current.muted = true;
+            // FIX: DO NOT mute preview in file mode. 
+            // Since we disconnected the source from speakers, 
+            // the preview is the ONLY way the host hears the movie.
+            videoRef.current.volume = localVolume;
+            videoRef.current.muted = (localVolume === 0);
           } else {
             videoRef.current.volume = localVolume;
             videoRef.current.muted = (localVolume === 0);
@@ -463,7 +472,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
           streamRef.current = finalStream;
           
-          // --- FIX: Force Preview Update ---
           if (videoRef.current) {
               videoRef.current.srcObject = finalStream;
               videoRef.current.play().catch(e => console.error("Preview Play Error", e));
@@ -472,7 +480,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
               ambilightRef.current.srcObject = finalStream;
               ambilightRef.current.play().catch(() => {});
           }
-          // --------------------------------
 
           broadcast({ type: 'bitrate_sync', payload: streamBitrate });
           setIsSharing(true);
@@ -497,12 +504,11 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       setSelectedSourceId(null);
       setSourceTab('screen'); 
       setSubtitleUrl(null); 
-      
+      setMovieTitle(""); // Reset Title
       setIsSharing(false);
       lastStatsRef.current = null;
   };
 
-  // ... [Toggle Logic: Mute, Fullscreen, etc.] ...
   const toggleMute = () => { if (localVolume > 0) setLocalVolume(0); else setLocalVolume(0.5); };
   const toggleFullscreen = () => { const elem = containerRef.current; if (!document.fullscreenElement) elem?.requestFullscreen().catch(console.error); else document.exitFullscreen(); };
   const toggleTheaterMode = () => { if (isFullscreen) document.exitFullscreen(); else setIsTheaterMode(!isTheaterMode); };
@@ -510,46 +516,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const startSharedPicker = () => { if (pickerStepRef.current !== 'idle' && pickerStepRef.current !== 'reveal') return; setPickerStep('type'); pickerStepRef.current = 'type'; const msg: ChatMessage = { id: Date.now().toString(), senderId: 'HOST', senderName: 'SYSTEM', text: '', timestamp: Date.now(), isSystemEvent: true, eventPayload: { state: 'type_selection' } }; setMessages(p => [...p, msg]); broadcast({ type: 'chat', payload: msg }); };
   const handlePickerInteraction = (action: string, value?: string) => { if (action === 'start_picker') { startSharedPicker(); return; } const msgId = Date.now().toString(); let payload: any = {}; const currentStep = pickerStepRef.current; const currentMediaType = activeMediaTypeRef.current; const seen = seenTitlesRef.current; if (action === 'select_type') { if (currentStep !== 'type') return; const type = value as MediaType; setActiveMediaType(type); activeMediaTypeRef.current = type; setPickerStep('genre'); pickerStepRef.current = 'genre'; payload = { state: 'genre_selection', mediaType: type }; } else if (action === 'select_genre' || action === 'reroll') { if (currentStep !== 'genre' && action !== 'reroll') return; const genre = value as Genre; if(action !== 'reroll') { setCurrentTheme(genre); broadcast({ type: 'theme_change', payload: genre }); } setPickerStep('reveal'); pickerStepRef.current = 'reveal'; const database = currentMediaType === 'Movie' ? MOVIE_DB : SHOW_DB; const allOptions = database[genre] || []; let available = allOptions.filter(m => !seen.has(m.title)); if (available.length < 3) available = allOptions; const picks = [...available].sort(() => 0.5 - Math.random()).slice(0, 3); setSeenTitles(prev => { const next = new Set(prev); picks.forEach(p => next.add(p.title)); return next; }); payload = { state: 'reveal', mediaType: currentMediaType, genre, movies: picks }; } const msg: ChatMessage = { id: msgId, senderId: 'HOST', senderName: 'SYSTEM', text: '', timestamp: Date.now(), isSystemEvent: true, eventPayload: payload }; setMessages(p => [...p, msg]); broadcast({ type: 'chat', payload: msg }); };
   const handleSendMessage = (text: string, type: 'text' | 'gif' = 'text', replyTo?: ReplyContext) => { const msg: ChatMessage = { id: Date.now().toString() + Math.floor(Math.random() * 1000), senderId: 'HOST', senderName: username, text, timestamp: Date.now(), type, replyTo, reactions: {} }; setMessages(p => { if (p.some(m => m.id === msg.id)) return p; return [...p, msg]; }); broadcast({ type: 'chat', payload: msg }); };
-
-  useEffect(() => {
-      if (isSharing && showNerdStats) {
-          statsIntervalRef.current = setInterval(() => {
-              const firstPeer = peersRef.current.values().next().value;
-              const peerAny = firstPeer as any;
-              if (peerAny && peerAny._pc) {
-                  peerAny._pc.getStats().then((reports: any) => {
-                      reports.forEach((report: any) => {
-                          if (report.type === 'outbound-rtp' && report.kind === 'video') {
-                              if (videoRef.current) {
-                                  if (lastStatsRef.current) {
-                                      if (report.bytesSent < lastStatsRef.current.bytesSent) {
-                                          lastStatsRef.current = { timestamp: report.timestamp, bytesSent: report.bytesSent };
-                                          return;
-                                      }
-                                      const bytesSinceLast = report.bytesSent - lastStatsRef.current.bytesSent;
-                                      const timeSinceLast = report.timestamp - lastStatsRef.current.timestamp;
-                                      if (timeSinceLast > 0) {
-                                          const bitrate = Math.round((bytesSinceLast * 8) / timeSinceLast);
-                                          setStats(prev => ({ ...prev, bitrate: `${(bitrate / 1000).toFixed(1)} Mbps` }));
-                                      }
-                                  }
-                                  lastStatsRef.current = { timestamp: report.timestamp, bytesSent: report.bytesSent };
-                                  setStats(prev => ({ ...prev, resolution: `${videoRef.current?.videoWidth}x${videoRef.current?.videoHeight}`, fps: report.framesPerSecond || 0 }));
-                              }
-                          }
-                          if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                              setStats(prev => ({ ...prev, latency: `${Math.round(report.currentRoundTripTime * 1000)} ms` }));
-                          }
-                      });
-                  });
-              }
-          }, 1000);
-      } else {
-          if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-          lastStatsRef.current = null;
-      }
-      return () => { if (statsIntervalRef.current) clearInterval(statsIntervalRef.current); };
-  }, [isSharing, showNerdStats]);
 
   if (!isRoomStarted) {
       return (
@@ -589,9 +555,11 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 onTimeUpdate={handleFileTimeUpdate}
                 onLoadedMetadata={() => fileVideoRef.current && setDuration(fileVideoRef.current.duration)}
             >
-                {subtitleUrl && <track label="English" kind="subtitles" src={subtitleUrl} default />}
+                {/* FIX: Add key to force reload when url changes */}
+                {subtitleUrl && <track key={subtitleUrl} label="English" kind="subtitles" src={subtitleUrl} default />}
             </video>
 
+            {/* DYNAMIC CSS FOR SUBTITLES */}
             <style>{`
                 video::cue {
                     background-color: rgba(0, 0, 0, 0.4);
@@ -607,7 +575,15 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             `}</style>
 
             <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-                <div className="pointer-events-auto flex items-center gap-2"></div>
+                <div className="pointer-events-auto flex items-center gap-2">
+                    {/* --- MOVIE TITLE DISPLAY --- */}
+                    {isSharing && movieTitle && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg animate-in slide-in-from-top-2">
+                            <FileVideo size={14} className="text-purple-400" />
+                            <span className="text-xs font-bold text-gray-200 truncate max-w-[200px]">{movieTitle}</span>
+                        </div>
+                    )}
+                </div>
                 <div className="pointer-events-auto flex items-center gap-4">
                    <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg">
                        <Wifi size={14} className={myIp ? "text-green-400" : "text-gray-500"} />
@@ -637,7 +613,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         <div className="flex gap-4 px-6 py-4 border-b border-white/5">
                             <button onClick={() => setSourceTab('screen')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'screen' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>Screens</button>
                             <button onClick={() => setSourceTab('window')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'window' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>Windows</button>
-                            <button onClick={async () => { if (!fileStreamUrl) { const filePath = await window.electron.openVideoFile(); if (filePath) { setFileStreamUrl(`file://${filePath}`); setSourceTab('file'); setSelectedSourceId('file'); } } else { setSourceTab('file'); } }} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'file' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}><div className="flex items-center gap-2"><FileVideo size={16} /> Video File</div></button>
+                            <button onClick={async () => { if (!fileStreamUrl) { const filePath = await window.electron.openVideoFile(); if (filePath) { setFileStreamUrl(`file://${filePath}`); setMovieTitle(filePath.split(/[\\/]/).pop()); setSourceTab('file'); setSelectedSourceId('file'); } } else { setSourceTab('file'); } }} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'file' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}><div className="flex items-center gap-2"><FileVideo size={16} /> Video File</div></button>
                             <div className="ml-auto flex items-center gap-2"><button onClick={prepareScreenShare} className={`p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all ${isRefreshingSources ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button></div>
                         </div>
                         {isMac && sourceTab === 'window' && audioSource === 'system' && (<div className="mx-6 mt-4 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg flex items-center gap-3 animate-in slide-in-from-top-2"><AlertTriangle className="text-orange-500 shrink-0" size={20} /><p className="text-xs text-orange-200"><span className="font-bold block text-orange-400 mb-0.5">Audio Limitation Detected</span>macOS cannot record audio from individual windows. Please use <b>Screens</b> or <b>Video File</b> mode.</p></div>)}
@@ -649,12 +625,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                             <div className="aspect-video bg-black rounded-xl overflow-hidden border-2 border-purple-500 shadow-[0_0_30px_rgba(168,85,247,0.3)] mb-4">
                                                 <video src={fileStreamUrl} className="w-full h-full object-contain" controls />
                                             </div>
-                                            <button onClick={(e) => { e.stopPropagation(); setFileStreamUrl(null); setSelectedSourceId(null); }} className="absolute top-2 right-2 p-2 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 shadow-lg" title="Remove File"><Trash2 size={16} /></button>
+                                            <button onClick={(e) => { e.stopPropagation(); setFileStreamUrl(null); setSelectedSourceId(null); setMovieTitle(""); }} className="absolute top-2 right-2 p-2 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 shadow-lg" title="Remove File"><Trash2 size={16} /></button>
                                             <p className="text-green-400 font-bold flex items-center justify-center gap-2"><Check size={16}/> File Ready</p>
                                             <p className="text-gray-500 text-xs mt-1">Audio will be captured directly from file.</p>
                                         </div>
                                     ) : (
-                                        <div className="text-center"><p className="text-gray-500 mb-4">Select a local video file for perfect quality.</p><Button onClick={async () => { const filePath = await window.electron.openVideoFile(); if (filePath) { setFileStreamUrl(`file://${filePath}`); setSourceTab('file'); setSelectedSourceId('file'); } }}>Choose File</Button></div>
+                                        <div className="text-center"><p className="text-gray-500 mb-4">Select a local video file for perfect quality.</p><Button onClick={async () => { const filePath = await window.electron.openVideoFile(); if (filePath) { setFileStreamUrl(`file://${filePath}`); setMovieTitle(filePath.split(/[\\/]/).pop()); setSourceTab('file'); setSelectedSourceId('file'); } }}>Choose File</Button></div>
                                     )}
                                 </div>
                             ) : sourceTab === 'screen' ? (
