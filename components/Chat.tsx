@@ -142,6 +142,28 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
       }
   }));
 
+  // --- MOBILE KEYBOARD FIX START ---
+  useEffect(() => {
+    // Only run this logic on mobile devices (touch supported)
+    if (typeof window !== 'undefined' && 'ontouchstart' in window && window.visualViewport) {
+        const handleVisualResize = () => {
+            // When the visual viewport resizes (keyboard open/close), 
+            // force the window scroll to top. This prevents the browser from
+            // scrolling the document body and creating the black gap.
+            window.scrollTo(0, 0);
+        };
+
+        window.visualViewport.addEventListener('resize', handleVisualResize);
+        window.visualViewport.addEventListener('scroll', handleVisualResize);
+        
+        return () => {
+            window.visualViewport?.removeEventListener('resize', handleVisualResize);
+            window.visualViewport?.removeEventListener('scroll', handleVisualResize);
+        };
+    }
+  }, []);
+  // --- MOBILE KEYBOARD FIX END ---
+
   const lastSystemMessageId = [...messages].reverse().find(m => m.isSystemEvent)?.id;
 
   // Toast Logic: Only active if Pin State is OFF (0)
@@ -314,6 +336,14 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
       );
   };
 
+  const handleInputFocusInternal = () => {
+    // Force scroll to top when focusing input on mobile
+    if (typeof window !== 'undefined' && 'ontouchstart' in window) {
+        window.scrollTo(0, 0);
+    }
+    if (onInputFocus) onInputFocus();
+  };
+
   return (
     <div className={`flex flex-col h-full w-full relative font-sans ${isOverlay ? 'bg-transparent pointer-events-none' : 'bg-transparent'}`}>
       
@@ -356,7 +386,7 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
       <div className={`relative z-20 flex-shrink-0 ${
           isOverlay 
             ? `transition-all duration-300 transform px-4 ${inputVisible ? 'opacity-100 pointer-events-auto translate-y-0 pb-4' : 'opacity-0 pointer-events-none translate-y-4'}` 
-            : 'px-4 pt-4 pb-2' // FIXED: Removed transition/transform here. Added pb-2 to prevent gap issues.
+            : 'px-4 pt-4 pb-2' 
       }`}>
         
         {showPicker && (
@@ -380,7 +410,7 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
                                 className="w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white" 
                                 value={gifSearch} 
                                 onChange={e => setGifSearch(e.target.value)}
-                                onFocus={onInputFocus}
+                                onFocus={handleInputFocusInternal}
                                 onBlur={onInputBlur}
                              />
                              
@@ -478,7 +508,7 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
                     type="text"
                     value={inputText}
                     onChange={(e) => { setInputText(e.target.value); if(onInputChange) onInputChange(); }}
-                    onFocus={onInputFocus}
+                    onFocus={handleInputFocusInternal}
                     onBlur={onInputBlur}
                     placeholder={isOverlay ? "Type a message..." : "Message..."}
                     className="flex-1 bg-transparent border-none text-white text-sm px-1 focus:outline-none placeholder-gray-500/70 min-w-0"
