@@ -656,7 +656,18 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     {!hasStream && <div className="text-center"><div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 animate-blob"><Tv size={32} className="text-gray-500"/></div><p className="text-gray-500 font-medium">Waiting for stream...</p></div>}
                     <video ref={ambilightRef} className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60" muted />
                     <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
-                    <div className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}><div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-xl border border-white/10"><button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor"/>}</button><button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={18} className="text-red-400"/> : <Volume2 size={18} className="text-white"/>}</button><div className="w-px h-5 bg-white/20"/> <button onClick={toggleFullscreen} className="p-2 text-white">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button></div></div>
+                    {/* UPDATED MOBILE CONTROLS */}
+                    <div className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-xl border border-white/10">
+                            <button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor"/>}</button>
+                            <button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={18} className="text-red-400"/> : <Volume2 size={18} className="text-white"/>}</button>
+                            <div className="w-px h-5 bg-white/20"/>
+                            <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 rounded-full ${showNerdStats ? activeTheme.primary : 'text-white'}`}><Activity size={18}/></button>
+                            <button onClick={togglePiP} className="p-2 text-white"><PictureInPicture size={18}/></button>
+                            <button onClick={toggleTheaterMode} className={`p-2 rounded-full ${isTheaterMode ? activeTheme.primary : 'text-white'}`}><Tv size={18}/></button>
+                            <button onClick={toggleFullscreen} className="p-2 text-white">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button>
+                        </div>
+                    </div>
                 </div>
             </div>
             {/* Chat/Members Area (Fills remaining space) */}
