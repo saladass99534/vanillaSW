@@ -625,24 +625,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   return (
     <div className="flex h-screen bg-[#111] text-gray-100 overflow-hidden font-sans">
       
-       {showExitConfirm && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
-                <div className="flex items-center gap-3 mb-4 text-gray-200">
-                    <AlertCircle size={24} />
-                    <h3 className="text-lg font-bold">Leave Party?</h3>
-                </div>
-                <p className="text-gray-400 text-sm mb-6">
-                    You will be disconnected from the stream.
-                </p>
-                <div className="flex gap-3 justify-end">
-                    <Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button>
-                    <Button variant="danger" onClick={onBack}>Leave</Button>
-                </div>
-            </div>
-        </div>
-      )}
-
       {/* Video Area */}
       <div className="flex-1 flex flex-col relative bg-black min-w-0">
         
@@ -661,6 +643,25 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 }
             }}
         >
+          {/* MODAL MOVED INSIDE for fullscreen visibility */}
+          {showExitConfirm && (
+            <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center gap-3 mb-4 text-gray-200">
+                        <AlertCircle size={24} />
+                        <h3 className="text-lg font-bold">Leave Party?</h3>
+                    </div>
+                    <p className="text-gray-400 text-sm mb-6">
+                        You will be disconnected from the stream.
+                    </p>
+                    <div className="flex gap-3 justify-end">
+                        <Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button>
+                        <Button variant="danger" onClick={onBack}>Leave</Button>
+                    </div>
+                </div>
+            </div>
+          )}
+
           {/* Top Bar - Located inside Video Viewport */}
           <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}>
               <div className="pointer-events-auto flex items-center gap-2">
