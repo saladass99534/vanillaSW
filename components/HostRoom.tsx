@@ -634,12 +634,17 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
               } as any);
 
           } else if (audioSource === 'system') {
+              // --- FIX: ADDED chromeMediaSourceId TO AUDIO ---
               finalStream = await navigator.mediaDevices.getUserMedia({
                   audio: {
-                      mandatory: { chromeMediaSource: 'desktop' }
+                      mandatory: {
+                          chromeMediaSource: 'desktop',
+                          chromeMediaSourceId: sourceId // This allows macOS to capture system audio for this screen
+                      }
                   },
                   video: videoConstraints
               } as any);
+              // --- END FIX ---
 
               if (sourceTab === 'screen') {
                   setLocalVolume(0);
