@@ -196,7 +196,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   useEffect(() => {
     if (electronAvailable) {
         // 0.999 is functionally invisible but forces the window manager to keep rendering background apps
-        window.electron.setWindowOpacity(browserFix ? 0.999 : 1.0);
+        window.electron.setWindowOpacity(browserFix ? 0.999999 : 1.0);
     }
     // Cleanup: Ensure opacity is reset to 1.0 when leaving the room
     return () => {
