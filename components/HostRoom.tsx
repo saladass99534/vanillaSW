@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { 
@@ -107,7 +108,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [isRoomStarted, setIsRoomStarted] = useState(false);
   const [myIp, setMyIp] = useState('');
   const [isInitializing, setIsInitializing] = useState(false);
-  const [isWebStreamEnabled, setIsWebStreamEnabled] = useState(true);
+  const [isWebStreamEnabled, setIsWebStreamEnabled] = useState(false);
 
   // App State
   const [username] = useState(generateRandomName());
@@ -207,6 +208,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     };
   }, [browserFix, electronAvailable]);
 
+  // Effect to toggle web server
+  useEffect(() => {
+      if (electronAvailable && isRoomStarted) {
+          window.electron.toggleWebServer(isWebStreamEnabled);
+      }
+  }, [isWebStreamEnabled, isRoomStarted, electronAvailable]);
+
   const startRoom = () => {
     if (!electronAvailable) {
         alert("Electron API not found. Please run within the Electron app.");
@@ -226,7 +234,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         setMyIp("127.0.0.1");
     });
 
-    window.electron.toggleWebServer(isWebStreamEnabled);
+    // Start with web server off, user toggles in UI
     window.electron.startHostServer(65432);
   };
 
@@ -579,6 +587,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   const prepareScreenShare = async () => {
       if (!electronAvailable) return;
+      // FIX: Force exit fullscreen to ensure source selector is visible
+      if (document.fullscreenElement) {
+          document.exitFullscreen();
+      }
       setIsRefreshingSources(true);
       try {
           const sources = await window.electron.getDesktopSources();
@@ -890,23 +902,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 <Zap className="w-12 h-12 text-blue-400 mx-auto mb-4" />
                 <h2 className="text-3xl font-bold text-white mb-2">Initialize Host</h2>
                 <p className="text-gray-400 mb-6 text-sm">Start a secure P2P server on your local network.</p>
-                
-                <div className="flex items-center justify-between bg-black/30 p-3 rounded-xl mb-4 border border-white/5">
-                    <div className="flex items-center gap-3 text-left">
-                        <Globe size={18} className={isWebStreamEnabled ? "text-green-400" : "text-gray-500"} />
-                        <div>
-                            <p className="text-sm font-bold text-white">Web Browser Streaming</p>
-                            <p className="text-xs text-gray-500">Allow viewers to join via browser (mobile/tablet).</p>
-                        </div>
-                    </div>
-                    <button 
-                        onClick={() => setIsWebStreamEnabled(!isWebStreamEnabled)} 
-                        className={`w-10 h-5 rounded-full relative transition-colors ${isWebStreamEnabled ? 'bg-green-500' : 'bg-gray-600'}`}
-                    >
-                        <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${isWebStreamEnabled ? 'left-6' : 'left-1'}`} />
-                    </button>
-                </div>
-
                 <Button className="w-full py-4" size="lg" onClick={startRoom} isLoading={isInitializing}>
                     {isInitializing ? 'INITIALIZING...' : 'INITIALIZE SERVER'}
                 </Button>
@@ -1107,25 +1102,20 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       {/* Main Content Area */}
       <div className={`flex-1 flex flex-col relative transition-all duration-300 ${activeTab && !isTheaterMode && !isFullscreen ? 'mr-0' : 'mr-0'}`}>
         
-        {/* Top Bar */}
-        <div className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-[#111]/50 backdrop-blur-sm z-20">
-            <div className="flex items-center gap-4">
-                <div className="flex flex-col">
-                    <h1 className="font-bold text-lg tracking-tight text-white flex items-center gap-2">
-                        SheiyuWatch <span className="text-[10px] bg-blue-600 px-1.5 py-0.5 rounded text-white font-mono">HOST</span>
-                    </h1>
-                    {isSharing && <span className="text-[10px] text-red-400 font-bold flex items-center gap-1 animate-pulse"><div className="w-1.5 h-1.5 bg-red-500 rounded-full"/> LIVE</span>}
-                </div>
+        {/* Floating Top Controls (Reverted to Floating style) */}
+        <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+            <div className="pointer-events-auto flex items-center gap-2">
+               {/* Optional: Add back/home button here if needed */}
             </div>
 
-            <div className="flex items-center gap-6">
-               <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg border border-white/5">
+            <div className="pointer-events-auto flex items-center gap-4">
+               <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg">
                    <Wifi size={14} className={myIp ? "text-green-400" : "text-gray-500"} />
-                   <span className="font-mono text-xs text-gray-300 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(myIp)} title="Click to Copy IP">{myIp || "Detecting IP..."}</span>
+                   <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(myIp)} title="Click to Copy IP">{myIp || "Detecting IP..."}</span>
                </div>
                
-               <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2">
-                   <Power size={14} /> End Session
+               <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600">
+                   <Power size={14} /> End
                </Button>
             </div>
         </div>
@@ -1196,7 +1186,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             />
 
             {showNerdStats && (
-                <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
+                <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
                     <h4 className={`${activeTheme.primary} font-bold mb-1 flex items-center gap-1`}><Activity size={10}/> STREAM STATS (OUT)</h4>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                         <span>Resolution:</span> <span className="text-white">{stats.resolution}</span>
@@ -1254,54 +1244,83 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
               </div>
             )}
 
-            {/* Glass Control Bar */}
-            {isSharing && (
-                <div className={`absolute bottom-8 z-50 transition-all duration-500 ${showControls || (isInputFocused && !isInputIdle) ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`}>
-                    <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-black/50 hover:scale-[1.02] transition-all">
-                        
+            {/* Glass Control Bar - Always Visible if Room Started */}
+            <div className={`absolute bottom-8 z-50 transition-all duration-500 ${showControls || (isInputFocused && !isInputIdle) ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`}>
+                <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-black/50 hover:scale-[1.02] transition-all">
+                    
+                    {/* Expandable Audio Control */}
+                    <div className="flex items-center gap-2 group/vol">
                         <button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">
                             {localVolume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}
                         </button>
-
-                        <div className="w-px h-6 bg-white/10"></div>
-
-                        <div className="flex items-center gap-2">
-                            <button 
-                                onClick={startSharedPicker} 
-                                disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')}
-                                className={`p-2 hover:bg-white/10 rounded-full transition-colors ${(pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'text-gray-600 cursor-not-allowed' : `${activeTheme.primary}`}`}
-                                title="Suggest Movie"
-                            >
-                                <Clapperboard size={20} />
-                            </button>
-                            <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${showNerdStats ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Nerd Stats">
-                                <Activity size={20} />
-                            </button>
-                            <button onClick={() => setShowVideoSettings(!showVideoSettings)} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${showVideoSettings ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Video Settings">
-                                <Sliders size={20} />
-                            </button>
-                            <button onClick={takeScreenshot} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors" title="Screenshot">
-                                <Camera size={20} />
-                            </button>
-                            <button onClick={togglePiP} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95" title="Picture-in-Picture">
-                                <PictureInPicture size={20} />
-                            </button>
-                            <button onClick={toggleTheaterMode} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${isTheaterMode ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Toggle Theater Mode">
-                                <Tv size={20} />
-                            </button>
-                            <button onClick={toggleFullscreen} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors" title="Fullscreen">
-                                {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
-                            </button>
+                        <div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center">
+                            <input 
+                                type="range" min="0" max="1" step="0.05" 
+                                value={localVolume} onChange={(e) => setLocalVolume(parseFloat(e.target.value))}
+                                className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`}
+                            />
                         </div>
+                    </div>
 
-                        <div className="w-px h-6 bg-white/10"></div>
+                    <div className="w-px h-6 bg-white/10"></div>
 
-                        <button onClick={stopSharing} className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2">
-                            <ScreenShareOff size={14} /> STOP
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={startSharedPicker} 
+                            disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')}
+                            className={`p-2 hover:bg-white/10 rounded-full transition-colors ${(pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'text-gray-600 cursor-not-allowed' : `${activeTheme.primary}`}`}
+                            title="Suggest Movie"
+                        >
+                            <Clapperboard size={20} />
+                        </button>
+                        <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${showNerdStats ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Nerd Stats">
+                            <Activity size={20} />
+                        </button>
+                        <button onClick={() => setShowVideoSettings(!showVideoSettings)} disabled={!isSharing} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${showVideoSettings ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'} ${!isSharing ? 'opacity-50 cursor-not-allowed' : ''}`} title="Video Settings">
+                            <Sliders size={20} />
+                        </button>
+                        <button onClick={takeScreenshot} disabled={!isSharing} className={`p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors ${!isSharing ? 'opacity-50 cursor-not-allowed' : ''}`} title="Screenshot">
+                            <Camera size={20} />
+                        </button>
+                        <button onClick={togglePiP} disabled={!isSharing} className={`p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white active:scale-95 ${!isSharing ? 'opacity-50 cursor-not-allowed' : ''}`} title="Picture-in-Picture">
+                            <PictureInPicture size={20} />
+                        </button>
+                        <button onClick={toggleTheaterMode} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${isTheaterMode ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Toggle Theater Mode">
+                            <Tv size={20} />
+                        </button>
+                        <button onClick={toggleFullscreen} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors" title="Fullscreen">
+                            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+                        </button>
+                        
+                        <div className="w-px h-6 bg-white/10 mx-2"></div>
+
+                        {/* Web Stream Toggle in Bottom Bar */}
+                        <button 
+                            onClick={() => setIsWebStreamEnabled(!isWebStreamEnabled)}
+                            className={`p-2 hover:bg-white/10 rounded-full transition-colors ${isWebStreamEnabled ? 'text-green-400' : 'text-gray-500 hover:text-gray-400'}`}
+                            title={isWebStreamEnabled ? "Web Streaming ON" : "Web Streaming OFF"}
+                        >
+                            <Globe size={20} />
                         </button>
                     </div>
+
+                    {isSharing ? (
+                        <>
+                            <div className="w-px h-6 bg-white/10"></div>
+                            <button onClick={stopSharing} className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2">
+                                <ScreenShareOff size={14} /> STOP
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <div className="w-px h-6 bg-white/10"></div>
+                            <button onClick={prepareScreenShare} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20">
+                                <ScreenShare size={14} /> SHARE
+                            </button>
+                        </>
+                    )}
                 </div>
-            )}
+            </div>
         </div>
       </div>
 
