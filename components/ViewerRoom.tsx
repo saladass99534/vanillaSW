@@ -90,10 +90,8 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   const [showNerdStats, setShowNerdStats] = useState(false); 
   const [pickerStep, setPickerStep] = useState<'idle' | 'type' | 'genre' | 'reveal'>('idle');
   
-  // --- SUBTITLE STATE (Added) ---
   const [currentSubtitleText, setCurrentSubtitleText] = useState('');
   const [ccSize, setCcSize] = useState<'small' | 'medium' | 'large'>('medium');
-  // -----------------------------
 
   const [isMobile, setIsMobile] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
@@ -290,14 +288,12 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                             enforcedBitrateRef.current = msg.payload;
                         }
 
-                        // --- NEW DATA HANDLERS ---
                         if (msg.type === 'subtitle_update') {
                             setCurrentSubtitleText(msg.payload);
                         }
                         if (msg.type === 'cc_size') {
                             setCcSize(msg.payload);
                         }
-                        // -------------------------
 
                         if (msg.type === 'stream_stopped') {
                             setHasStream(false);
@@ -671,7 +667,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     <video ref={ambilightRef} className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60" muted />
                     <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
                     
-                    {/* --- ADDED OVERLAY SUBTITLE (MOBILE) --- */}
                     {currentSubtitleText && hasStream && (
                         <div className="absolute bottom-20 left-0 right-0 flex justify-center pointer-events-none z-30 px-4">
                             <span 
@@ -687,7 +682,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                             </span>
                         </div>
                     )}
-                    {/* -------------------------------------- */}
 
                     {(isTheaterMode || isFullscreen) && (
                         <div 
@@ -790,7 +784,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
             />
             
-            {/* --- ADDED OVERLAY SUBTITLE (DESKTOP) --- */}
+            {/* --- SUBTITLE OVERLAY --- */}
             {currentSubtitleText && hasStream && (
                 <div className="absolute bottom-24 left-0 right-0 flex justify-center pointer-events-none z-30 px-8">
                     <span 
@@ -806,30 +800,47 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     </span>
                 </div>
             )}
-            {/* --------------------------------------- */}
 
             {(isTheaterMode || isFullscreen) && <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className="absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60]"><Chat ref={chatRef} messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} isOverlay={true} inputVisible={controlsVisible} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} theme={activeTheme}/></div>}
             
             <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                 <div className="flex flex-col bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-2">
                     
-                    <div className="px-4 pt-2 pb-1 flex items-center gap-2 w-64 mx-auto">
-                         <span className="text-[10px] font-mono text-gray-400 w-8 text-right">{formatTime(currentTime)}</span>
-                         <input 
-                             type="range" 
-                             min={0} 
-                             max={duration || 100} 
-                             value={currentTime}
-                             readOnly
-                             className={`flex-1 h-1 rounded-lg appearance-none bg-white/20 ${activeTheme.accent} cursor-default`}
-                             style={{ pointerEvents: 'none' }} 
-                         />
-                         <span className="text-[10px] font-mono text-gray-400 w-8">{duration === Infinity ? "LIVE" : formatTime(duration)}</span>
-                    </div>
-
                     <div className="flex items-center justify-center gap-4 px-6 py-1">
                         <button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>
-                        <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-24 transition-all"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none ${activeTheme.accent}`}/></div></div>
+                        <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none ${activeTheme.accent}`}/></div></div>
+                        
+                        <div className="w-px h-6 bg-white/20"/>
+                        
+                        {/* --- VIEWER SEEKBAR (No Thumb, Read Only) --- */}
+                        <div className="flex items-center gap-2 min-w-[200px]">
+                             <span className="text-[10px] font-mono text-gray-400 w-8 text-right">{formatTime(currentTime)}</span>
+                             <input 
+                                 type="range" 
+                                 min={0} 
+                                 max={duration || 100} 
+                                 value={currentTime}
+                                 readOnly
+                                 className={`w-40 h-1 rounded-lg appearance-none bg-white/20 ${activeTheme.accent} cursor-default`}
+                                 style={{ pointerEvents: 'none' }}
+                             />
+                             <style>{`
+                                input[type=range][readonly]::-webkit-slider-thumb {
+                                    -webkit-appearance: none;
+                                    width: 0;
+                                    height: 0;
+                                    opacity: 0;
+                                }
+                                input[type=range][readonly]::-moz-range-thumb {
+                                    width: 0;
+                                    height: 0;
+                                    opacity: 0;
+                                }
+                             `}</style>
+                             <span className="text-[10px] font-mono text-gray-400 w-8">{duration === Infinity ? "LIVE" : formatTime(duration)}</span>
+                        </div>
+                        {/* ------------------------------------------- */}
+
                         <div className="w-px h-6 bg-white/20"/> 
                         <div className="flex gap-2 items-center"><button onClick={() => handlePickerAction('start_picker')} disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')} className={`p-2 rounded-full ${activeTheme.primary}`} title="Suggest Movie"><Clapperboard size={18}/></button><button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 rounded-full ${showNerdStats ? activeTheme.primary : 'text-white'}`} title="Nerd Stats"><Activity size={18}/></button><button onClick={togglePiP} className="p-2 text-white" title="Picture-in-Picture"><PictureInPicture size={18}/></button><button onClick={toggleTheaterMode} className={`p-2 rounded-full ${isTheaterMode ? activeTheme.primary : 'text-white'}`} title="Theater Mode"><Tv size={18}/></button><button onClick={toggleFullscreen} className="p-2 text-white" title="Fullscreen">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button></div>
                     </div>
