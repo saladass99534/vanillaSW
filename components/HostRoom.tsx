@@ -128,7 +128,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [showNerdStats, setShowNerdStats] = useState(false); 
   
   // --- CHAT PIN STATE (0=Disabled, 1=2 Msg Stay, 2=Stick) ---
-  const [chatPinMode, setChatPinMode] = useState<number>(0); 
+  const [pinState, setPinState] = useState<number>(0); 
     
   const [seenTitles, setSeenTitles] = useState<Set<string>>(new Set()); 
   const [activeMediaType, setActiveMediaType] = useState<MediaType>('Movie'); 
@@ -809,19 +809,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
             {(isTheaterMode || isFullscreen) && (  
                <div className={`absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60] flex flex-col justify-end transition-opacity duration-300`}>  
-                  {/* --- PIN BUTTON RESTORED HERE --- */}
+                  {/* --- PIN BUTTON RESTORED --- */}
                   <div className="absolute -top-8 left-0 flex gap-2 pointer-events-auto">
                       <button 
-                        onClick={() => setChatPinMode((prev) => (prev + 1) % 3)} 
-                        className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 hover:bg-black/80 transition-colors"
+                        type="button"
+                        onClick={() => setPinState(prev => (prev + 1) % 3)} 
+                        className="flex items-center justify-center p-2 rounded-full bg-black/60 border border-white/10 hover:bg-white/10 transition-colors"
+                        title={pinState === 0 ? "Pin Chat" : pinState === 1 ? "Pinned (Auto-Hide)" : "Pinned (Always On)"}
                       >
-                          <Pin size={12} className={chatPinMode > 0 ? activeTheme.primary : "text-gray-500"} fill={chatPinMode === 2 ? "currentColor" : "none"} />
-                          <span className={`text-[10px] font-bold uppercase ${chatPinMode > 0 ? "text-white" : "text-gray-500"}`}>
-                              {chatPinMode === 0 ? "Disabled" : chatPinMode === 1 ? "2 Messages Stay" : "2 Messages Stick"}
-                          </span>
+                          <Pin size={16} className={pinState === 2 ? "fill-white text-white" : "text-gray-400"} />
                       </button>
                   </div>
-                  
+                  {/* --------------------------- */}
+
                   <Chat 
                     ref={chatRef} 
                     messages={messages} 
@@ -839,7 +839,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                     // This controls the input bar visibility as shown in your screenshot
                     inputVisible={(showControls || (isInputFocused && !isInputIdle))}
                     // @ts-ignore
-                    pinState={chatPinMode} 
+                    pinState={pinState} 
                   />  
               </div>  
             )}  
