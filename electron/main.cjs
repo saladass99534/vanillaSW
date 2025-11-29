@@ -1,24 +1,10 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, dialog, powerSaveBlocker } = require('electron'); 
+const { app, BrowserWindow, ipcMain, desktopCapturer, dialog } = require('electron'); 
 const path = require('path');
 const { exec } = require('child_process');
 const WebSocket = require('ws');
 const express = require('express');
 const http = require('http');
-const fs = require('fs'); 
-
-// --- CRITICAL PERFORMANCE FIXES ---
-
-// 1. FIX BLACK SCREEN: Forces video to be drawn on CPU so stream can see it.
-app.disableHardwareAcceleration();
-
-// 2. PREVENT THROTTLING: Forces Chrome to give this app full priority even if minimized/background.
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-background-timer-throttling');
-
-// 3. PREVENT SLEEP: Keeps system awake while app is open (optional but recommended for hosts)
-const powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
-
-// ----------------------------------
+const fs = require('fs'); // <--- ADDED: Required for reading subtitle files
 
 let mainWindow;
 let wss; 
@@ -59,17 +45,14 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    fullscreen: true,
-    show: false,        
+    fullscreen: true, // Standard fullscreen (No Kiosk mode as requested)
+    show: false,       
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, 
-      webSecurity: false,
-      // 4. BACKGROUND PROCESSING: Keeps the render loop running at full speed 
-      // even if you alt-tab away or minimize the window.
-      backgroundThrottling: false 
+      webSecurity: false 
     },
     autoHideMenuBar: true,
     backgroundColor: '#000000',
@@ -103,10 +86,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', function () {
-  // Stop power blocker when app closes
-  if (powerSaveBlocker.isStarted(powerBlockerId)) {
-    powerSaveBlocker.stop(powerBlockerId);
-  }
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -141,7 +120,7 @@ ipcMain.handle('open-video-file', async () => {
   }
 });
 
-// Subtitle File Picker
+// Subtitle File Picker (UPDATED TO READ CONTENT)
 ipcMain.handle('open-subtitle-file', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openFile'],
@@ -154,6 +133,7 @@ ipcMain.handle('open-subtitle-file', async () => {
 
   const filePath = filePaths[0];
   try {
+    // Read the file content directly so we can send it to the frontend/viewers
     const content = fs.readFileSync(filePath, 'utf-8');
     return { path: filePath, content: content };
   } catch (e) {
@@ -161,6 +141,7 @@ ipcMain.handle('open-subtitle-file', async () => {
     return null;
   }
 });
+// --------------------------------
 
 ipcMain.handle('get-tailscale-status', async () => {
   return new Promise((resolve, reject) => {
