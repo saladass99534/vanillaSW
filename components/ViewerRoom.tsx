@@ -3,7 +3,7 @@ import SimplePeer from 'simple-peer';
 import { Button } from './Button';
 import { Chat, ChatHandle } from './Chat';
 import { ChatMessage, generateRandomName, Member, ReplyContext, StreamStats, FloatingEmoji } from '../types';
-import { Wifi, Tv, Users, Crown, X, Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, AlertCircle, Activity, Minimize, PictureInPicture, Clapperboard } from 'lucide-react';
+import { Wifi, Tv, Users, Crown, X, Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, AlertCircle, Activity, Minimize, PictureInPicture, Clapperboard, FileVideo } from 'lucide-react';
 
 interface ViewerRoomProps {
   onBack: () => void;
@@ -102,6 +102,12 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showNerdStats, setShowNerdStats] = useState(false); 
   const [pickerStep, setPickerStep] = useState<'idle' | 'type' | 'genre' | 'reveal'>('idle');
+
+  // --- NEW STATES FOR METADATA & SUBS ---
+  const [movieTitle, setMovieTitle] = useState<string>("");
+  const [currentSubtitleText, setCurrentSubtitleText] = useState('');
+  const [ccSize, setCcSize] = useState<'small' | 'medium' | 'large'>('medium');
+  // --------------------------------------
   
   // Mobile Detection & Viewport
   const [isMobile, setIsMobile] = useState(false);
@@ -303,7 +309,22 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                             if (videoRef.current) videoRef.current.srcObject = null;
                             if (ambilightRef.current) ambilightRef.current.srcObject = null;
                             lastStatsRef.current = null;
+                            setMovieTitle("");
+                            setCurrentSubtitleText("");
                         }
+
+                        // --- NEW LISTENERS FOR METADATA & SUBS ---
+                        if (msg.type === 'metadata') {
+                            setMovieTitle(msg.payload.title);
+                        }
+                        if (msg.type === 'subtitle_update') {
+                            setCurrentSubtitleText(msg.payload);
+                        }
+                        if (msg.type === 'cc_size') {
+                            setCcSize(msg.payload);
+                        }
+                        // -----------------------------------------
+                        
                     } catch (e) { console.error("Parse error", e); }
                 });
                 
@@ -682,6 +703,22 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     <video ref={ambilightRef} className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60" muted />
                     <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
                     
+                    {currentSubtitleText && hasStream && (
+                        <div className="absolute bottom-16 left-0 right-0 flex justify-center pointer-events-none z-30 px-4">
+                            <span 
+                                className="bg-black/60 text-white rounded-md px-2 py-0.5 text-center backdrop-blur-sm"
+                                style={{
+                                    fontSize: ccSize === 'small' ? '0.8rem' : ccSize === 'medium' ? '1rem' : '1.5rem',
+                                    textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                                    fontFamily: 'sans-serif',
+                                    maxWidth: '90%'
+                                }}
+                            >
+                                {currentSubtitleText}
+                            </span>
+                        </div>
+                    )}
+                    
                     {/* --- FIX 4: INSERTED OVERLAY CHAT (THEATER MODE) --- */}
                     {(isTheaterMode || isFullscreen) && (
                         <div 
@@ -725,7 +762,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
             <div className={`flex-1 min-h-0 flex flex-col bg-[#1e1f22] ${isTheaterMode ? 'hidden' : ''}`}>
                 <div className="flex p-2 gap-2"><button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'chat' ? 'bg-white/10' : ''}`}>CHAT</button><button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'members' ? 'bg-white/10' : ''}`}>MEMBERS</button></div>
                 <div className="flex-1 relative min-h-0">
-                    {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
+                    {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
                     {activeTab === 'members' && <div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">{m.name[0]}</div><span>{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500"/>}</div>))}</div>}
                 </div>
             </div>
@@ -766,7 +803,17 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
             
             {/* Top Controls */}
             <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className={`absolute top-0 right-0 z-20 p-4 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button>
+                {/* --- MOVIE TITLE BADGE --- */}
+                <div className="flex items-center gap-4">
+                    {hasStream && movieTitle && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg animate-in slide-in-from-top-2">
+                            <FileVideo size={14} className="text-purple-400" />
+                            <span className="text-xs font-bold text-gray-200 truncate max-w-[200px]">{movieTitle}</span>
+                        </div>
+                    )}
+                    <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button>
+                </div>
+                {/* ------------------------- */}
             </div>
             
             {/* Floating Emojis */}
@@ -782,6 +829,24 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
             
             <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
             
+            {/* --- SUBTITLE OVERLAY --- */}
+            {currentSubtitleText && hasStream && (
+                <div className="absolute bottom-24 left-0 right-0 flex justify-center pointer-events-none z-30 px-8">
+                    <span 
+                        className="bg-black/60 text-white rounded-md px-3 py-1 text-center backdrop-blur-sm"
+                        style={{
+                            fontSize: ccSize === 'small' ? '1rem' : ccSize === 'medium' ? '1.5rem' : '2.25rem',
+                            textShadow: '0 2px 4px rgba(0,0,0,0.8)',
+                            fontFamily: 'sans-serif',
+                            maxWidth: '80%'
+                        }}
+                    >
+                        {currentSubtitleText}
+                    </span>
+                </div>
+            )}
+            {/* ------------------------ */}
+
             {(isTheaterMode || isFullscreen) && <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className="absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60]"><Chat ref={chatRef} messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} isOverlay={true} inputVisible={controlsVisible} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} theme={activeTheme}/></div>}
             
             <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
@@ -816,7 +881,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
       <div className={`bg-black/40 backdrop-blur-xl flex flex-col md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0' : 'w-80 opacity-100'} ${activeTheme.border} ${activeTheme.glow}`}>
         <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
           <div className="flex p-2 gap-2"><button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'chat' ? 'bg-white/10' : ''}`}>CHAT</button><button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'members' ? 'bg-white/10' : ''}`}>MEMBERS</button></div>
-          <div className="flex-1 relative min-h-0">{activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}{activeTab === 'members' && <div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl"><div className="flex items-center gap-3"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.isHost ? 'bg-yellow-400 text-black' : 'bg-white/10'}`}>{m.name[0]}</div><span>{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500"/>}</div>))}</div>}</div>
+          <div className="flex-1 relative min-h-0">{activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}{activeTab === 'members' && <div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl"><div className="flex items-center gap-3"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.isHost ? 'bg-yellow-400 text-black' : 'bg-white/10'}`}>{m.name[0]}</div><span>{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500"/>}</div>))}</div>}</div>
         </div>
       </div>
     </div>
