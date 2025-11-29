@@ -93,7 +93,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   const [username] = useState(generateRandomName()); 
   const [currentTheme, setCurrentTheme] = useState<keyof typeof THEMES>('default'); 
-   
+    
   const [activeTab, setActiveTab] = useState<SidebarTab>('chat'); 
   const [showControls, setShowControls] = useState(true); 
   const [isInputFocused, setIsInputFocused] = useState(false); 
@@ -102,7 +102,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [isFullscreen, setIsFullscreen] = useState(false); 
   const [showExitConfirm, setShowExitConfirm] = useState(false); 
   const [showNerdStats, setShowNerdStats] = useState(false); 
-   
+    
   const [seenTitles, setSeenTitles] = useState<Set<string>>(new Set()); 
   const [activeMediaType, setActiveMediaType] = useState<MediaType>('Movie'); 
   const [pickerStep, setPickerStep] = useState<'idle' | 'type' | 'genre' | 'reveal'>('idle'); 
@@ -117,13 +117,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   useEffect(() => { seenTitlesRef.current = seenTitles; }, [seenTitles]); 
 
   const [videoFilters, setVideoFilters] = useState({ brightness: 100, contrast: 100, saturate: 100 }); 
-   
+    
   const [showSourceSelector, setShowSourceSelector] = useState(false); 
   const [availableSources, setAvailableSources] = useState<DesktopSource[]>([]); 
   const [sourceTab, setSourceTab] = useState<'screen' | 'window' | 'file'>('screen'); 
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null); 
   const [isRefreshingSources, setIsRefreshingSources] = useState(false); 
-   
+    
   const [fileStreamUrl, setFileStreamUrl] = useState<string | null>(null); 
   const fileVideoRef = useRef<HTMLVideoElement>(null);  
   const audioContextRef = useRef<AudioContext | null>(null); 
@@ -151,10 +151,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [showAudioHelp, setShowAudioHelp] = useState(false); 
 
   const [isSharing, setIsSharing] = useState(false); 
-  const [localVolume, setLocalVolume] = useState(0);  
+  const [localVolume, setLocalVolume] = useState(0.5); // Default to 50% volume for host monitoring 
 
   const [stats, setStats] = useState<StreamStats>({ resolution: 'N/A', bitrate: '0', fps: 0, packetLoss: '0', latency: '0' }); 
-   
+    
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]); 
   const [messages, setMessages] = useState<ChatMessage[]>([]); 
   const [members, setMembers] = useState<Member[]>([]); 
@@ -319,7 +319,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   const loadSubtitle = async () => { 
       if (!electronAvailable) return; 
-      
+       
       // @ts-ignore 
       const result = await window.electron.openSubtitleFile(); 
        
@@ -352,7 +352,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       const hours = Math.floor(time / 3600);
       const minutes = Math.floor((time % 3600) / 60);
       const seconds = Math.floor(time % 60);
-      
+       
       if (hours > 0) {
           return `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
       }
@@ -445,23 +445,37 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       return () => { if (statsIntervalRef.current) clearInterval(statsIntervalRef.current); }; 
   }, [isSharing, showNerdStats]); 
 
+  // --- CRITICAL FIX FOR HOST AUDIO MONITORING (VB-CABLE) ---
   useEffect(() => { 
-      if (fileVideoRef.current) fileVideoRef.current.volume = 1.0; 
+      if (fileVideoRef.current) fileVideoRef.current.volume = 1.0; // Hidden file player always at 100% (captured by stream)
+      
       if (videoRef.current) { 
-          if (sourceTab === 'file') { 
-            videoRef.current.volume = localVolume; 
-            videoRef.current.muted = (localVolume === 0); 
-          } else { 
-            videoRef.current.volume = 0; 
-            videoRef.current.muted = true; 
-          } 
+          // Applies volume to the PREVIEW player regardless of source (File, Screen, or VB-Cable)
+          videoRef.current.volume = localVolume; 
+          videoRef.current.muted = (localVolume === 0); 
       } 
   }, [localVolume, sourceTab]); 
+  // ---------------------------------------------------------
 
   const handlePeerDisconnect = (socketId: string) => { if (peersRef.current.has(socketId)) { peersRef.current.get(socketId)?.destroy(); peersRef.current.delete(socketId); } setMembers(prev => prev.filter(m => m.id !== socketId)); broadcast({ type: 'members', payload: members.filter(m => m.id !== socketId) }); }; 
   const handleData = (socketId: string, data: any) => {  
       try { const parsed = JSON.parse(data.toString());  
-        if (parsed.type === 'join') { const newMember = { id: socketId, name: parsed.name, isHost: false }; setMembers(prev => { if (prev.find(m => m.id === socketId)) return prev; const up = [...prev, newMember]; setTimeout(() => broadcast({ type: 'members', payload: up }), 100); return up; }); const p = peersRef.current.get(socketId); if(p) { sendDataToPeer(p, { type: 'theme_change', payload: currentTheme }); if(streamRef.current) sendDataToPeer(p, { type: 'bitrate_sync', payload: streamBitrateRef.current }); sendDataToPeer(p, { type: 'cc_size', payload: ccSize }); } } 
+        if (parsed.type === 'join') { 
+            const newMember = { id: socketId, name: parsed.name, isHost: false }; 
+            setMembers(prev => { if (prev.find(m => m.id === socketId)) return prev; const up = [...prev, newMember]; setTimeout(() => broadcast({ type: 'members', payload: up }), 100); return up; }); 
+            const p = peersRef.current.get(socketId); 
+            if(p) { 
+                sendDataToPeer(p, { type: 'theme_change', payload: currentTheme }); 
+                if(streamRef.current) sendDataToPeer(p, { type: 'bitrate_sync', payload: streamBitrateRef.current }); 
+                sendDataToPeer(p, { type: 'cc_size', payload: ccSize }); 
+                
+                // --- ADDED METADATA SYNC FOR NEW JOINERS ---
+                if (isSharing && movieTitle) {
+                    sendDataToPeer(p, { type: 'metadata', payload: { title: movieTitle } });
+                }
+                // -------------------------------------------
+            } 
+        } 
         if (parsed.type === 'chat') { const msg = parsed.payload; setMessages(prev => { if (prev.some(m => m.id === msg.id)) return prev; return [...prev, msg]; }); broadcast({ type: 'chat', payload: msg }); } 
         if (parsed.type === 'hype') { handleHypeAction(parsed.payload.emoji); } 
         if (parsed.type === 'picker_action') handlePickerInteraction(parsed.payload.action, parsed.payload.value); 
@@ -525,7 +539,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                   audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } }, 
                   video: videoConstraints 
               } as any); 
-              setLocalVolume(0); 
+              // --- FIXED: Removed setLocalVolume(0) to allow monitoring ---
           } else { 
               const videoStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any); 
               try { 
@@ -549,6 +563,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           broadcast({ type: 'bitrate_sync', payload: streamBitrate }); 
           setIsSharing(true); 
           peersRef.current.forEach(p => p.addStream(finalStream)); 
+          
+          // --- ADDED METADATA BROADCAST ON START ---
+          broadcast({ type: 'metadata', payload: { title: movieTitle } });
+          // -----------------------------------------
 
       } catch (e) { console.error(e); alert("Failed to start stream: " + e); } 
   }; 
@@ -612,8 +630,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         <div ref={containerRef} className="flex-1 relative bg-black flex items-center justify-center overflow-hidden group select-none" 
             onMouseMove={() => { setShowControls(true); resetInputIdleTimer(); if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500); }}> 
              
-            {/* FIX: Removed opacity-0, added z-index trick to keep video active for x265 capture */}
-            {/* UPDATED: Changed opacity to 1 and z-index to -50 to prevent black screen on web */}
             <video ref={fileVideoRef} src={fileStreamUrl || ''} className="absolute top-0 left-0 w-full h-full -z-50 opacity-100 pointer-events-none" style={{ visibility: 'visible' }} playsInline crossOrigin="anonymous" onTimeUpdate={handleFileTimeUpdate} onLoadedMetadata={() => fileVideoRef.current && setDuration(fileVideoRef.current.duration)}> 
                 {subtitleUrl && <track key={subtitleUrl} label="English" kind="subtitles" src={subtitleUrl} default />} 
             </video> 
@@ -756,7 +772,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{localVolume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={localVolume} onChange={(e) => setLocalVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div> 
                         <div className="w-px h-6 bg-white/10"></div> 
                         {audioSource === 'file' && (<button onClick={toggleFilePlay} className="p-2 hover:bg-white/10 rounded-full text-white transition-colors">{isPlayingFile ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>)} 
-                        {audioSource === 'file' && (<div className="relative"><button onClick={() => setShowCCMenu(!showCCMenu)} className={`p-2 rounded-full transition-colors ${subtitleUrl ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}><Captions size={20} /></button>{showCCMenu && (<div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-48 bg-[#151618] border border-white/10 rounded-xl p-3 shadow-2xl animate-in slide-in-from-bottom-2"><div className="flex flex-col gap-2"><button onClick={loadSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left"><Plus size={14} className="text-blue-400"/> Add Subs (.vtt/.srt)</button>{subtitleUrl && (<><button onClick={removeSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left text-red-400"><Trash2 size={14} /> Remove Subtitles</button><div className="h-px bg-white/10 my-1"></div><div className="flex justify-between bg-black/30 rounded p-1"><button onClick={() => setCcSize('small')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'small' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>S</button><button onClick={() => setCcSize('medium')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'medium' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>M</button><button onClick={() => setCcSize('large')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'large' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>L</button></div></>)}</div></div>)}</div>)} 
+                        {audioSource === 'file' && (<div className="relative"><button onClick={() => setShowCCMenu(!showCCMenu)} className={`p-2 rounded-full transition-colors ${subtitleUrl ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}><Captions size={20} /></button>{/* REPLACED -translate-x-1/2 WITH -ml-24 TO FIX BLURRY TEXT */}<div className="absolute bottom-full left-1/2 -ml-24 mb-4 w-48 bg-[#151618] border border-white/10 rounded-xl p-3 shadow-2xl animate-in slide-in-from-bottom-2"><div className="flex flex-col gap-2"><button onClick={loadSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left"><Plus size={14} className="text-blue-400"/> Add Subs (.vtt/.srt)</button>{subtitleUrl && (<><button onClick={removeSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left text-red-400"><Trash2 size={14} /> Remove Subtitles</button><div className="h-px bg-white/10 my-1"></div><div className="flex justify-between bg-black/30 rounded p-1"><button onClick={() => setCcSize('small')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'small' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>S</button><button onClick={() => setCcSize('medium')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'medium' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>M</button><button onClick={() => setCcSize('large')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'large' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>L</button></div></>)}</div></div></div>)} 
                         
                         {isSharing && audioSource === 'file' && (
                             <>
@@ -770,7 +786,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         )}
                         {/* ----------------------------------------------- */}
 
-                        <div className="w-px h-6 bg-white/10 mx-2"></div>
+                        <div className="w-px h-6 bg-white/10 mx-2"></div> 
                         <div className="flex items-center gap-2"> 
                             <button onClick={startSharedPicker} disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${(pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'text-gray-600 cursor-not-allowed' : `${activeTheme.primary}`}`} title="Suggest Movie"><Clapperboard size={20} /></button> 
                             <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${showNerdStats ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Nerd Stats"><Activity size={20} /></button> 
@@ -789,7 +805,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       <div className={`bg-black/40 backdrop-blur-xl flex flex-col md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden ${isTheaterMode || isFullscreen ? 'w-0 max-w-0 opacity-0 border-0 pointer-events-none' : 'w-80 opacity-100'} ${activeTheme.border} ${activeTheme.glow}`}> 
           <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${isTheaterMode || isFullscreen ? 'translate-x-full' : 'translate-x-0'}`}> 
             <div className="flex p-2 gap-2"><button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'chat' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>CHAT</button><button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full transition-all ${activeTab === 'members' ? `bg-white/10 text-white` : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>MEMBERS</button></div> 
-            <div className="flex-1 relative overflow-hidden flex flex-col">{activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleHypeAction} onPickerAction={handlePickerInteraction} myId={'HOST'} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}{activeTab === 'members' && (<div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.isHost ? `bg-gradient-to-br from-yellow-400 to-orange-500 text-black` : 'bg-white/10 text-white'}`}>{m.name[0]}</div><span className="text-sm font-medium text-gray-200">{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500 drop-shadow-md" />}</div>))}</div>)}</div> 
+            <div className="flex-1 relative overflow-hidden flex flex-col">{activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat ref={chatRef} messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleHypeAction} onPickerAction={handlePickerInteraction} myId={'HOST'} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}{activeTab === 'members' && (<div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.isHost ? `bg-gradient-to-br from-yellow-400 to-orange-500 text-black` : 'bg-white/10 text-white'}`}>{m.name[0]}</div><span className="text-sm font-medium text-gray-200">{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500 drop-shadow-md" />}</div>))}</div>)}</div> 
           </div> 
       </div> 
     </div> 
