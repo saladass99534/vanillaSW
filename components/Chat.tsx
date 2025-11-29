@@ -14,7 +14,7 @@ interface ChatProps {
   inputVisible?: boolean;
   onInputFocus?: () => void;
   onInputBlur?: () => void;
-  onInputChange?: () => void; // New prop for idle detection
+  onInputChange?: () => void;
   theme?: { primary: string, glow: string, border: string, bg: string };
 }
 
@@ -188,7 +188,7 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
 
   const scrollToBottom = () => {
     if (!isOverlay) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
   };
 
