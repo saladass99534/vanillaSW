@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react'; 
 import SimplePeer from 'simple-peer'; 
 import {  
@@ -127,9 +126,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [isFullscreen, setIsFullscreen] = useState(false); 
   const [showExitConfirm, setShowExitConfirm] = useState(false); 
   const [showNerdStats, setShowNerdStats] = useState(false); 
-   
-  // --- CHAT PIN STATE (0=Disabled, 1=2 Msg Stay, 2=Stick) ---
-  const [pinState, setPinState] = useState<number>(0); 
     
   const [seenTitles, setSeenTitles] = useState<Set<string>>(new Set()); 
   const [activeMediaType, setActiveMediaType] = useState<MediaType>('Movie'); 
@@ -286,11 +282,21 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     return () => { document.removeEventListener('fullscreenchange', handleFsChange); performCleanup(); };  
   }, []);  
 
-  // --- STEP 3: THE IDLE TIMER LOGIC ---
+  // --- IDENTICAL LOGIC FROM VIEWER ROOM ---
+  // Anti-flicker logic for fullscreen controls
+  const clearControlsTimeout = () => {
+      if (controlsTimeoutRef.current) {
+          clearTimeout(controlsTimeoutRef.current);
+      }
+  };
+  const resetControlsTimeout = () => {
+      clearControlsTimeout();
+      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500);
+  };
+
   const resetInputIdleTimer = () => {  
       setIsInputIdle(false);  
       if (inputIdleTimeoutRef.current) clearTimeout(inputIdleTimeoutRef.current);  
-      // If focused, wait 4 seconds before marking as idle (hiding the bar)
       if (isInputFocused) {
         inputIdleTimeoutRef.current = setTimeout(() => {
             setIsInputIdle(true);
@@ -299,13 +305,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   };  
   useEffect(() => { resetInputIdleTimer(); }, [isInputFocused]);  
 
+  const handleMouseMove = () => {
+      setShowControls(true);
+      resetInputIdleTimer();
+      resetControlsTimeout();
+  };
+
   useEffect(() => {  
     const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTheaterMode) setIsTheaterMode(false); };  
     window.addEventListener('keydown', handleKeyDown);  
     return () => window.removeEventListener('keydown', handleKeyDown);  
   }, [isTheaterMode]);  
 
-  // --- STEP 1: ROBUST WAKE ON TYPE LOGIC (With Fix) ---
+  // Auto-wake chat (Identical to ViewerRoom)
   useEffect(() => {  
       const handleGlobalKeyDown = (e: KeyboardEvent) => {  
           resetInputIdleTimer();  
@@ -566,7 +578,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
               finalStream = new MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);  
               setAudioSource('file');   
-              setLocalVolume(0.5);   
+              setLocalVolume(0.5); 
+              
+              // Force detail content hint for file sharing (Fixes desktop muddiness)
+              const vidTrack = videoStream.getVideoTracks()[0];
+              if (vidTrack && 'contentHint' in vidTrack) {
+                  vidTrack.contentHint = 'detail';
+              }
           }  
           else if (audioSource === 'none') {  
               finalStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);  
@@ -677,17 +695,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       );  
   }  
 
+  const controlsVisible = showControls || (isInputFocused && !isInputIdle);
+
   return (  
     <div className="flex h-screen bg-[#111] text-gray-100 overflow-hidden font-sans">  
       <div className="flex-1 flex flex-col relative min-w-0">  
         <div ref={containerRef} className="flex-1 relative bg-black flex items-center justify-center overflow-hidden group select-none"  
-            onMouseMove={() => { setShowControls(true); resetInputIdleTimer(); if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500); }}>  
+            onMouseMove={handleMouseMove} onClick={() => setShowControls(!showControls)} onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout}>  
               
             <video ref={fileVideoRef} src={fileStreamUrl || ''} className="absolute top-0 left-0 w-full h-full -z-50 opacity-100 pointer-events-none" style={{ visibility: 'visible' }} playsInline crossOrigin="anonymous" onTimeUpdate={handleFileTimeUpdate} onLoadedMetadata={() => fileVideoRef.current && setDuration(fileVideoRef.current.duration)}>  
                 {subtitleUrl && <track key={subtitleUrl} label="English" kind="subtitles" src={subtitleUrl} default />}  
             </video>  
 
-            <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>  
+            <div className={`absolute top-0 left-0 right-0 z-20 p-4 flex justify-between pointer-events-none transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`} onClick={(e) => e.stopPropagation()}>  
                 <div className="pointer-events-auto flex items-center gap-2">  
                     {isSharing && movieTitle && (  
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg animate-in slide-in-from-top-2">  
@@ -706,7 +726,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             </div>  
 
             {showExitConfirm && (  
-                <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">  
+                <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => e.stopPropagation()}>  
                     <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">  
                         <div className="flex items-center gap-3 mb-4 text-gray-200"><AlertCircle size={24} /><h3 className="text-lg font-bold">End Session?</h3></div>  
                         <p className="text-gray-400 text-sm mb-6">This will disconnect all viewers and stop the stream.</p>  
@@ -716,7 +736,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             )}  
               
             {showSourceSelector && (  
-                <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">  
+                <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>  
                     <div className="bg-[#1e1f22] border border-white/10 rounded-2xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl">  
                         <div className="p-6 border-b border-white/10 flex justify-between items-center">  
                             <h3 className="text-xl font-bold text-white flex items-center gap-2"><ScreenShare size={20} className="text-blue-400"/> Select Source</h3>  
@@ -814,7 +834,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             )}  
 
             {(isTheaterMode || isFullscreen) && (  
-               <div className={`absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60] flex flex-col justify-end transition-opacity duration-300`}>  
+               <div className={`absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60] flex flex-col justify-end transition-opacity duration-300`} onClick={(e) => e.stopPropagation()}>  
                   <Chat 
                     ref={chatRef} 
                     messages={messages} 
@@ -824,27 +844,17 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                     onPickerAction={handlePickerInteraction} 
                     myId={'HOST'} 
                     theme={activeTheme} 
-                    // --- STEP 2: VISIBILITY LOGIC (Smart Props) ---
-                    // Track focus state
                     onInputFocus={() => setIsInputFocused(true)} 
                     onInputBlur={() => setIsInputFocused(false)} 
-                    // Reset the idle timer on every keystroke
                     onInputChange={resetInputIdleTimer} 
-                    
                     isOverlay={true} 
-                    // Calculate visibility: controls active OR (focused AND not idle)
-                    inputVisible={(showControls || (isInputFocused && !isInputIdle))}
-                    
-                    // @ts-ignore
-                    pinState={pinState} 
-                    // @ts-ignore
-                    setPinState={setPinState}
+                    inputVisible={controlsVisible}
                   />  
               </div>  
             )}  
 
-            {/* Controls Bar: Uses same logic for visibility */}
-            <div className={`absolute bottom-8 z-50 transition-all duration-500 ${showControls || (isInputFocused && !isInputIdle) ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`}>  
+            {/* Controls Bar */}
+            <div className={`absolute bottom-8 z-50 transition-all duration-500 ${controlsVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`} onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()}>  
                 <div className="flex flex-col items-center gap-2">  
                     <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-black/50 hover:scale-[1.02] transition-all">  
                         <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{localVolume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={localVolume} onChange={(e) => setLocalVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div>  
