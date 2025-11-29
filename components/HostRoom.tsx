@@ -5,7 +5,7 @@ import {  
   ScreenShare, ScreenShareOff, Power, Crown, X, Smile, Image as ImageIcon, ArrowLeft, Zap, Send, 
   Monitor, AppWindow, AlertTriangle, AlertCircle, Wifi, HelpCircle, 
   Activity, RefreshCw, Globe, RotateCcw, Clapperboard, PictureInPicture, 
-  FileVideo, Trash2, Play, Pause, Captions, Plus  
+  FileVideo, Trash2, Play, Pause, Captions, Plus, Pin 
 } from 'lucide-react'; 
 import { Button } from './Button'; 
 import { Chat, ChatHandle } from './Chat'; 
@@ -39,51 +39,85 @@ const THEMES: Record<string, { primary: string, glow: string, border: string, bg
   Thriller: { primary: 'text-emerald-400', glow: 'shadow-emerald-500/50', border: 'border-emerald-500/30', bg: 'bg-emerald-500', accent: 'accent-emerald-500' }, 
 }; 
 
-const setVideoBitrate = (sdp: string, bitrate: number): string => { 
-    if (bitrate <= 0) return sdp; 
-    let sdpLines = sdp.split('\r\n'); 
-    let videoMLineIndex = -1; 
-    for (let i = 0; i < sdpLines.length; i++) { 
-        if (sdpLines[i].startsWith('m=video')) { 
-            videoMLineIndex = i; 
-            break; 
-        } 
-    } 
-    if (videoMLineIndex === -1) return sdp; 
-    let newSdpLines = sdpLines.filter(line => !line.startsWith('b=AS:')); 
-    newSdpLines.splice(videoMLineIndex + 1, 0, `b=AS:${bitrate}`); 
-    let codecPayloadType = -1; 
-    const codecRegex = /a=rtpmap:(\d+) (VP9|H264)\/90000/; 
-    for (const line of newSdpLines) { 
-        const match = line.match(codecRegex); 
-        if (match) { 
-            codecPayloadType = parseInt(match[1], 10); 
-            if (line.includes('VP9')) break; 
-        } 
-    } 
-    if (codecPayloadType !== -1) { 
-        let fmtpLineIndex = -1; 
-        for (let i = 0; i < newSdpLines.length; i++) { 
-            if (newSdpLines[i].startsWith(`a=fmtp:${codecPayloadType}`)) { 
-                fmtpLineIndex = i; 
-                break; 
-            } 
-        } 
-        const bitrateParams = `x-google-min-bitrate=${bitrate};x-google-start-bitrate=${bitrate};x-google-max-bitrate=${bitrate}`; 
-        if (fmtpLineIndex !== -1) { 
-            const existingLine = newSdpLines[fmtpLineIndex]; 
-            if (!existingLine.includes('x-google-min-bitrate')) { 
-                 newSdpLines[fmtpLineIndex] = `${existingLine}; ${bitrateParams}`; 
-            } 
-        } else { 
-            let rtpmapLineIndex = newSdpLines.findIndex(line => line.startsWith(`a=rtpmap:${codecPayloadType}`)); 
-            if(rtpmapLineIndex !== -1) { 
-                newSdpLines.splice(rtpmapLineIndex + 1, 0, `a=fmtp:${codecPayloadType} ${bitrateParams}`); 
-            } 
-        } 
-    } 
-    return newSdpLines.join('\r\n'); 
-}; 
+// --- UPDATED: VP9 PRIORITIZATION LOGIC ---
+const setVideoBitrate = (sdp: string, bitrate: number): string => {
+    let sdpLines = sdp.split('\r\n');
+    let videoMLineIndex = -1;
+
+    // 1. Find m=video line
+    for (let i = 0; i < sdpLines.length; i++) {
+        if (sdpLines[i].startsWith('m=video')) {
+            videoMLineIndex = i;
+            break;
+        }
+    }
+
+    if (videoMLineIndex === -1) return sdp;
+
+    // 2. Identify VP9 Payload Type
+    let vp9PayloadType = -1;
+    let h264PayloadType = -1;
+    
+    // We look for the map lines to identify the number associated with VP9
+    for (const line of sdpLines) {
+        if (line.startsWith('a=rtpmap:')) {
+            if (line.includes('VP9/90000')) {
+                const match = line.match(/a=rtpmap:(\d+) VP9/);
+                if (match) vp9PayloadType = parseInt(match[1], 10);
+            } else if (line.includes('H264/90000')) {
+                const match = line.match(/a=rtpmap:(\d+) H264/);
+                if (match && h264PayloadType === -1) h264PayloadType = parseInt(match[1], 10);
+            }
+        }
+    }
+
+    // 3. Force VP9 Priority (Reorder m=video line)
+    // This strictly tells the receiver "I prefer VP9"
+    if (vp9PayloadType !== -1) {
+        const mLineParts = sdpLines[videoMLineIndex].split(' ');
+        // Keep the first 3 parts (m=video <port> <proto>)
+        const header = mLineParts.slice(0, 3);
+        // The rest are payload types
+        let payloads = mLineParts.slice(3);
+        
+        // Remove VP9 type from wherever it is and put it at the front
+        payloads = payloads.filter(p => parseInt(p) !== vp9PayloadType);
+        payloads.unshift(vp9PayloadType.toString());
+        
+        sdpLines[videoMLineIndex] = [...header, ...payloads].join(' ');
+    }
+
+    // 4. Apply Bitrate Limit (b=AS)
+    if (bitrate > 0) {
+        // Remove existing b=AS lines in the video section
+        sdpLines = sdpLines.filter(line => !line.startsWith('b=AS:'));
+        // Insert new limit
+        sdpLines.splice(videoMLineIndex + 1, 0, `b=AS:${bitrate}`);
+        
+        // 5. Apply x-google-bitrate to the preferred codec (VP9 if avail, else H264)
+        const targetPayload = vp9PayloadType !== -1 ? vp9PayloadType : h264PayloadType;
+        
+        if (targetPayload !== -1) {
+            // Find existing fmtp line or create one
+            let fmtpIndex = sdpLines.findIndex(l => l.startsWith(`a=fmtp:${targetPayload}`));
+            const params = `x-google-min-bitrate=${bitrate};x-google-start-bitrate=${bitrate};x-google-max-bitrate=${bitrate}`;
+            
+            if (fmtpIndex !== -1) {
+                if (!sdpLines[fmtpIndex].includes('x-google-min-bitrate')) {
+                    sdpLines[fmtpIndex] += `; ${params}`;
+                }
+            } else {
+                // Find where to insert (after rtpmap)
+                const rtpMapIndex = sdpLines.findIndex(l => l.startsWith(`a=rtpmap:${targetPayload}`));
+                if (rtpMapIndex !== -1) {
+                    sdpLines.splice(rtpMapIndex + 1, 0, `a=fmtp:${targetPayload} ${params}`);
+                }
+            }
+        }
+    }
+
+    return sdpLines.join('\r\n');
+};
 
 export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => { 
   const [isRoomStarted, setIsRoomStarted] = useState(false); 
@@ -102,7 +136,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => { 
   const [isFullscreen, setIsFullscreen] = useState(false); 
   const [showExitConfirm, setShowExitConfirm] = useState(false); 
   const [showNerdStats, setShowNerdStats] = useState(false); 
-    
+  
+  // --- CHAT PIN STATE (0=Off, 1=2msg, 2=Stick) ---
+  const [chatPinMode, setChatPinMode] = useState<number>(0); 
+  
   const [seenTitles, setSeenTitles] = useState<Set<string>>(new Set()); 
   const [activeMediaType, setActiveMediaType] = useState<MediaType>('Movie'); 
   const [pickerStep, setPickerStep] = useState<'idle' | 'type' | 'genre' | 'reveal'>('idle'); 
@@ -662,8 +699,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => { 
                             <span className="text-xs font-bold text-gray-200 truncate max-w-[200px]">{movieTitle}</span> 
                         </div> 
                     )} 
-                </div> 
-                <div className="pointer-events-auto flex items-center gap-4"> 
+                    </div> 
+                    <div className="pointer-events-auto flex items-center gap-4"> 
                    <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg"> 
                        <Wifi size={14} className={myIp ? "text-green-400" : "text-gray-500"} /> 
                        <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(myIp ? `${myIp}:8080` : '')} title="Click to Copy IP">{myIp ? `${myIp}:8080` : "Detecting IP..."}</span> 
@@ -782,7 +819,35 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => { 
 
             {(isTheaterMode || isFullscreen) && ( 
                <div className={`absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60] flex flex-col justify-end transition-opacity duration-300`}> 
-                  <Chat ref={chatRef} messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleHypeAction} onPickerAction={handlePickerInteraction} myId={'HOST'} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /> 
+                  {/* --- PIN BUTTON RESTORED --- */}
+                  <div className="absolute -top-8 left-0 flex gap-2 pointer-events-auto">
+                      <button 
+                        onClick={() => setChatPinMode((prev) => (prev + 1) % 3)} 
+                        className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 hover:bg-black/80 transition-colors"
+                      >
+                          <Pin size={12} className={chatPinMode > 0 ? activeTheme.primary : "text-gray-500"} fill={chatPinMode === 2 ? "currentColor" : "none"} />
+                          <span className={`text-[10px] font-bold uppercase ${chatPinMode > 0 ? "text-white" : "text-gray-500"}`}>
+                              {chatPinMode === 0 ? "Auto-Hide" : chatPinMode === 1 ? "Slow Fade" : "Pinned"}
+                          </span>
+                      </button>
+                  </div>
+                  {/* --------------------------- */}
+
+                  <Chat 
+                    ref={chatRef} 
+                    messages={messages} 
+                    onSendMessage={handleSendMessage} 
+                    onAddReaction={() => {}} 
+                    onHypeEmoji={handleHypeAction} 
+                    onPickerAction={handlePickerInteraction} 
+                    myId={'HOST'} 
+                    theme={activeTheme} 
+                    onInputFocus={() => setIsInputFocused(true)} 
+                    onInputBlur={() => setIsInputFocused(false)} 
+                    onInputChange={resetInputIdleTimer}
+                    // @ts-ignore
+                    pinState={chatPinMode} 
+                  /> 
               </div> 
             )} 
 
@@ -793,29 +858,29 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => { 
                         <div className="w-px h-6 bg-white/10"></div> 
                         {audioSource === 'file' && (<button onClick={toggleFilePlay} className="p-2 hover:bg-white/10 rounded-full text-white transition-colors">{isPlayingFile ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>)} 
                         {audioSource === 'file' && (
-                          <div className="relative">
-                            <button onClick={() => setShowCCMenu(!showCCMenu)} className={`p-2 rounded-full transition-colors ${subtitleUrl || showCCMenu ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}><Captions size={20} /></button>
-                            {/* MENU RENDER FIX: Only render if showCCMenu is true */}
-                            {showCCMenu && (
-                                <div className="absolute bottom-full left-1/2 -ml-24 mb-4 w-48 bg-[#151618] border border-white/10 rounded-xl p-3 shadow-2xl">
-                                    <div className="flex flex-col gap-2">
-                                        <button onClick={loadSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left"><Plus size={14} className="text-blue-400"/> Add Subs (.vtt/.srt)</button>
-                                        {subtitleUrl && (
-                                            <>
-                                                <button onClick={removeSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left text-red-400"><Trash2 size={14} /> Remove Subtitles</button>
-                                                <div className="h-px bg-white/10 my-1"></div>
-                                                <div className="flex justify-between bg-black/30 rounded p-1">
-                                                    <button onClick={() => setCcSize('small')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'small' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>S</button>
-                                                    <button onClick={() => setCcSize('medium')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'medium' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>M</button>
-                                                    <button onClick={() => setCcSize('large')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'large' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>L</button>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                          </div>
-                        )} 
+                          <div className="relative">
+                            <button onClick={() => setShowCCMenu(!showCCMenu)} className={`p-2 rounded-full transition-colors ${subtitleUrl || showCCMenu ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}><Captions size={20} /></button>
+                            {/* CC MENU FIXED: Only render if showCCMenu is true */}
+                            {showCCMenu && (
+                                <div className="absolute bottom-full left-1/2 -ml-24 mb-4 w-48 bg-[#151618] border border-white/10 rounded-xl p-3 shadow-2xl">
+                                    <div className="flex flex-col gap-2">
+                                        <button onClick={loadSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left"><Plus size={14} className="text-blue-400"/> Add Subs (.vtt/.srt)</button>
+                                        {subtitleUrl && (
+                                            <>
+                                                <button onClick={removeSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left text-red-400"><Trash2 size={14} /> Remove Subtitles</button>
+                                                <div className="h-px bg-white/10 my-1"></div>
+                                                <div className="flex justify-between bg-black/30 rounded p-1">
+                                                    <button onClick={() => setCcSize('small')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'small' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>S</button>
+                                                    <button onClick={() => setCcSize('medium')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'medium' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>M</button>
+                                                    <button onClick={() => setCcSize('large')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'large' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>L</button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                          </div>
+                        )} 
                         
                         {isSharing && audioSource === 'file' && (
                             <>
