@@ -115,10 +115,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
 
-  // NEW: Video Time State
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-
   const peerRef = useRef<SimplePeer.Instance | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const ambilightRef = useRef<HTMLVideoElement>(null);
@@ -184,14 +180,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
           videoRef.current.muted = (volume === 0);
       }
   }, [volume]);
-
-  // Format Time Helper
-  const formatTime = (time: number) => {
-      if (!isFinite(time)) return "LIVE";
-      const mins = Math.floor(time / 60);
-      const secs = Math.floor(time % 60);
-      return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
 
   const connectToHost = () => {
       if (!hostIpInput) return;
@@ -355,8 +343,10 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                           if (report.type === 'inbound-rtp' && report.kind === 'video') {
                               if (videoRef.current) {
                                   if (lastStatsRef.current) {
-                                      // Reset detection
+                                      // Reset detection: if the new byte count is less than the old one,
+                                      // it means the counter has reset. We should skip this calculation round.
                                       if (report.bytesReceived < lastStatsRef.current.bytesReceived) {
+                                          // Just update the reference for the next calculation and continue
                                           lastStatsRef.current = {
                                               timestamp: report.timestamp,
                                               bytesReceived: report.bytesReceived,
@@ -622,27 +612,27 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   };
 
   if (!isConnected && !hasStream) {
-      return (
-        <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 relative">
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
-          <button onClick={onBack} className="absolute top-8 left-8 text-gray-400 hover:text-white flex items-center gap-2 z-20"><ArrowLeft size={16} /> Back</button>
-          <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-xl rounded-3xl p-8 border border-white/10 shadow-2xl">
-            <div className="flex justify-center mb-6"><div className="bg-purple-500/20 p-4 rounded-2xl"><Users className="text-purple-400 w-8 h-8" /></div></div>
-            <h2 className="text-3xl font-bold text-center text-white mb-2">Join Party</h2>
-            <p className="text-gray-400 text-center mb-8 text-sm">
-                {electronAvailable ? "Enter Host IP Address" : "Connect to Host"}
-            </p>
-            <div className="space-y-6">
-              <div>
-                 <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Host IP Address</label>
-                 <input type="text" value={hostIpInput} onChange={(e) => setHostIpInput(e.target.value)} placeholder="100.x.x.x" className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50" />
-              </div>
-              <Button className="w-full py-4" size="lg" onClick={connectToHost} isLoading={isConnecting} disabled={!hostIpInput}>{isConnecting ? 'CONNECTING...' : 'JOIN'}</Button>
-              {!electronAvailable && <p className="text-blue-400 text-xs text-center mt-2">Running in Web Mode</p>}
-            </div>
-          </div>
-        </div>
-      );
+     return (
+       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 relative">
+         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+         <button onClick={onBack} className="absolute top-8 left-8 text-gray-400 hover:text-white flex items-center gap-2 z-20"><ArrowLeft size={16} /> Back</button>
+         <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-xl rounded-3xl p-8 border border-white/10 shadow-2xl">
+           <div className="flex justify-center mb-6"><div className="bg-purple-500/20 p-4 rounded-2xl"><Users className="text-purple-400 w-8 h-8" /></div></div>
+           <h2 className="text-3xl font-bold text-center text-white mb-2">Join Party</h2>
+           <p className="text-gray-400 text-center mb-8 text-sm">
+               {electronAvailable ? "Enter Host IP Address" : "Connect to Host"}
+           </p>
+           <div className="space-y-6">
+             <div>
+                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Host IP Address</label>
+                <input type="text" value={hostIpInput} onChange={(e) => setHostIpInput(e.target.value)} placeholder="100.x.x.x" className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50" />
+             </div>
+             <Button className="w-full py-4" size="lg" onClick={connectToHost} isLoading={isConnecting} disabled={!hostIpInput}>{isConnecting ? 'CONNECTING...' : 'JOIN'}</Button>
+             {!electronAvailable && <p className="text-blue-400 text-xs text-center mt-2">Running in Web Mode</p>}
+           </div>
+         </div>
+       </div>
+     );
   }
 
   const mobileTypingMode = isMobile && isInputFocused;
@@ -790,47 +780,11 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
             
             {hasStream && !isPlaying && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30"><button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="bg-white/20 rounded-full p-6"><Play size={48} className="text-white fill-white ml-2"/></button></div>}
             
-            <video 
-                ref={videoRef} 
-                className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} 
-                autoPlay 
-                playsInline 
-                onPlay={() => setIsPlaying(true)} 
-                onPause={() => setIsPlaying(false)}
-                // NEW: Bind time updates for seekbar
-                onTimeUpdate={() => setCurrentTime(videoRef.current?.currentTime || 0)}
-                onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
-            />
+            <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
             
             {(isTheaterMode || isFullscreen) && <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className="absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60]"><Chat ref={chatRef} messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} isOverlay={true} inputVisible={controlsVisible} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} theme={activeTheme}/></div>}
             
-            {/* --- UPDATED DESKTOP CONTROLS (With Seekbar) --- */}
-            <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                <div className="flex flex-col bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-2">
-                    
-                    {/* SEEKBAR (Read-Only for Viewer) */}
-                    <div className="px-4 pt-2 pb-1 flex items-center gap-2 w-64 mx-auto">
-                         <span className="text-[10px] font-mono text-gray-400 w-8 text-right">{formatTime(currentTime)}</span>
-                         <input 
-                             type="range" 
-                             min={0} 
-                             max={duration || 100} 
-                             value={currentTime}
-                             readOnly
-                             className={`flex-1 h-1 rounded-lg appearance-none bg-white/20 ${activeTheme.accent} cursor-default`}
-                             style={{ pointerEvents: 'none' }} 
-                         />
-                         <span className="text-[10px] font-mono text-gray-400 w-8">{duration === Infinity ? "LIVE" : formatTime(duration)}</span>
-                    </div>
-
-                    <div className="flex items-center justify-center gap-4 px-6 py-1">
-                        <button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>
-                        <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-24 transition-all"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none ${activeTheme.accent}`}/></div></div>
-                        <div className="w-px h-6 bg-white/20"/> 
-                        <div className="flex gap-2 items-center"><button onClick={() => handlePickerAction('start_picker')} disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')} className={`p-2 rounded-full ${activeTheme.primary}`} title="Suggest Movie"><Clapperboard size={18}/></button><button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 rounded-full ${showNerdStats ? activeTheme.primary : 'text-white'}`} title="Nerd Stats"><Activity size={18}/></button><button onClick={togglePiP} className="p-2 text-white" title="Picture-in-Picture"><PictureInPicture size={18}/></button><button onClick={toggleTheaterMode} className={`p-2 rounded-full ${isTheaterMode ? activeTheme.primary : 'text-white'}`} title="Theater Mode"><Tv size={18}/></button><button onClick={toggleFullscreen} className="p-2 text-white" title="Fullscreen">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button></div>
-                    </div>
-                </div>
-            </div>
+            <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}><div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10"><button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button><div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-24 transition-all"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none ${activeTheme.accent}`}/></div></div><div className="w-px h-6 bg-white/20"/> <div className="flex gap-2 items-center"><button onClick={() => handlePickerAction('start_picker')} disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')} className={`p-2 rounded-full ${activeTheme.primary}`} title="Suggest Movie"><Clapperboard size={18}/></button><button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 rounded-full ${showNerdStats ? activeTheme.primary : 'text-white'}`} title="Nerd Stats"><Activity size={18}/></button><button onClick={togglePiP} className="p-2 text-white" title="Picture-in-Picture"><PictureInPicture size={18}/></button><button onClick={toggleTheaterMode} className={`p-2 rounded-full ${isTheaterMode ? activeTheme.primary : 'text-white'}`} title="Theater Mode"><Tv size={18}/></button><button onClick={toggleFullscreen} className="p-2 text-white" title="Fullscreen">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button></div></div></div>
         </div>
       </div>
 
