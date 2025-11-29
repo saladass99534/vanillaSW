@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react'; 
 import SimplePeer from 'simple-peer'; 
 import {  
@@ -309,26 +310,17 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       const handleGlobalKeyDown = (e: KeyboardEvent) => {  
           resetInputIdleTimer();  
           
-          // 1. Safety Check: If user is ALREADY typing in an input, ignore this logic
-          const activeTag = document.activeElement?.tagName.toLowerCase();
-          if (activeTag === 'input' || activeTag === 'textarea') return;
-
-          // 2. If we are in Theater/Fullscreen...
-          if (isTheaterMode || isFullscreen) {
-              // Check for single char keys (ignore Ctrl, Alt, F1-F12, etc.)
-              if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {  
-                  setShowControls(true);  
-                  
-                  // 3. Force focus immediately (This pulls focus away from the video)
+          if ((isTheaterMode || isFullscreen) && !isInputFocused) {
+              if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                  setShowControls(true);
                   chatRef.current?.focusInput();
-              }  
-          }  
+              }
+          }
       };  
       
-      // FIX APPLIED HERE: Use 'document' + 'true' (Capture Phase)
-      document.addEventListener('keydown', handleGlobalKeyDown, true);  
-      return () => document.removeEventListener('keydown', handleGlobalKeyDown, true);  
-  }, [isTheaterMode, isFullscreen]);  
+      window.addEventListener('keydown', handleGlobalKeyDown);  
+      return () => window.removeEventListener('keydown', handleGlobalKeyDown);  
+  }, [isTheaterMode, isFullscreen, isInputFocused]);  
 
   const handleHypeAction = (emoji: string) => {  
       const newEmojis = Array.from({ length: 20 }).map((_, i) => ({ id: Math.random().toString(36) + i, emoji, x: Math.random() * 90 + 5, animationDuration: 3 + Math.random() * 4 }));  
@@ -367,7 +359,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const loadSubtitle = async () => {  
       if (!electronAvailable) return;  
         
-      // @ts-ignore  
       const result = await window.electron.openSubtitleFile();  
         
       if (result && result.content) {  
@@ -613,13 +604,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
           streamRef.current = finalStream;  
             
-          // --- FIX: DESKTOP BROWSER QUALITY (MOTION) --- 
-          finalStream.getVideoTracks().forEach(track => { 
-              if ('contentHint' in track) { 
-                  track.contentHint = 'motion'; 
-              } 
-          }); 
-          // --------------------------------------------- 
+          // Removed manual contentHint='motion' to allow browser to auto-tune for quality over framerate on desktop.
+          // This fixes the "too much compression" issue on desktop browsers.
 
           if (videoRef.current) {  
               videoRef.current.srcObject = finalStream;  
