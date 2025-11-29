@@ -127,7 +127,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [showExitConfirm, setShowExitConfirm] = useState(false); 
   const [showNerdStats, setShowNerdStats] = useState(false); 
   
-  // --- CHAT PIN STATE (0=Disabled, 1=2 Msg Stay, 2=Stick) ---
+  // --- CHAT PIN STATE (0=Off, 1=2msg, 2=Stick) ---
   const [pinState, setPinState] = useState<number>(0); 
     
   const [seenTitles, setSeenTitles] = useState<Set<string>>(new Set()); 
@@ -809,19 +809,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
             {(isTheaterMode || isFullscreen) && (  
                <div className={`absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60] flex flex-col justify-end transition-opacity duration-300`}>  
-                  {/* --- PIN BUTTON RESTORED --- */}
-                  <div className="absolute -top-8 left-0 flex gap-2 pointer-events-auto">
-                      <button 
-                        type="button"
-                        onClick={() => setPinState(prev => (prev + 1) % 3)} 
-                        className="flex items-center justify-center p-2 rounded-full bg-black/60 border border-white/10 hover:bg-white/10 transition-colors"
-                        title={pinState === 0 ? "Pin Chat" : pinState === 1 ? "Pinned (Auto-Hide)" : "Pinned (Always On)"}
-                      >
-                          <Pin size={16} className={pinState === 2 ? "fill-white text-white" : "text-gray-400"} />
-                      </button>
-                  </div>
-                  {/* --------------------------- */}
-
+                  {/* NO EXTERNAL BUTTON HERE (IT IS INSIDE CHAT) */}
                   <Chat 
                     ref={chatRef} 
                     messages={messages} 
@@ -834,12 +822,15 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                     onInputFocus={() => setIsInputFocused(true)} 
                     onInputBlur={() => setIsInputFocused(false)} 
                     onInputChange={resetInputIdleTimer} 
-                    // This was present in your old code and likely controls the overlay style
+                    // This prop tells Chat to render in overlay mode (which likely includes the pin button)
                     isOverlay={true} 
-                    // This controls the input bar visibility as shown in your screenshot
+                    // Control input visibility
                     inputVisible={(showControls || (isInputFocused && !isInputIdle))}
+                    // Pass state and setter to wire up the internal button
                     // @ts-ignore
                     pinState={pinState} 
+                    // @ts-ignore
+                    setPinState={setPinState}
                   />  
               </div>  
             )}  
