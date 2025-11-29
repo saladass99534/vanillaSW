@@ -788,14 +788,14 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
               <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10">
                 <button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>
                 <div className="flex items-center gap-2 group/vol">
-                    <button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">
+                    <button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors">
                         {volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}
                     </button>
                     <div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center">
                         <input 
                             type="range" min="0" max="1" step="0.05" 
                             value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))}
-                            className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`}
+                            className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent} ${activeTheme.primary} [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-current [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:bg-current`}
                         />
                     </div>
                 </div>
