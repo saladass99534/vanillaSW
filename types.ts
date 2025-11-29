@@ -100,6 +100,9 @@ declare global {
       guestSendSignal: (data: any) => void;
       
       removeAllListeners: (channel: string) => void;
+      
+      openVideoFile: () => Promise<string | null>;
+      openSubtitleFile: () => Promise<{ content: string; path: string } | null>;
     }
   }
 }
