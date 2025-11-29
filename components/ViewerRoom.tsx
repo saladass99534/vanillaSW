@@ -9,6 +9,7 @@ interface ViewerRoomProps {
   onBack: () => void;
 }
 
+// --- THEME CONFIG (Same as Host) ---
 const THEMES: Record<string, { primary: string, glow: string, border: string, bg: string, accent: string }> = {
   default: { primary: 'text-blue-400', glow: 'shadow-blue-500/50', border: 'border-blue-500/30', bg: 'bg-blue-500', accent: 'accent-blue-500' },
   Action: { primary: 'text-yellow-400', glow: 'shadow-yellow-500/50', border: 'border-yellow-500/30', bg: 'bg-yellow-500', accent: 'accent-yellow-500' },
@@ -20,19 +21,27 @@ const THEMES: Record<string, { primary: string, glow: string, border: string, bg
   Thriller: { primary: 'text-emerald-400', glow: 'shadow-emerald-500/50', border: 'border-emerald-500/30', bg: 'bg-emerald-500', accent: 'accent-emerald-500' },
 };
 
+// Helper function to modify SDP for strict bitrate control (copied from HostRoom)
 const setVideoBitrate = (sdp: string, bitrate: number): string => {
     if (bitrate <= 0) return sdp;
+
     let sdpLines = sdp.split('\r\n');
     let videoMLineIndex = -1;
+
     for (let i = 0; i < sdpLines.length; i++) {
         if (sdpLines[i].startsWith('m=video')) {
             videoMLineIndex = i;
             break;
         }
     }
-    if (videoMLineIndex === -1) return sdp;
+
+    if (videoMLineIndex === -1) {
+        return sdp;
+    }
+
     let newSdpLines = sdpLines.filter(line => !line.startsWith('b=AS:'));
     newSdpLines.splice(videoMLineIndex + 1, 0, `b=AS:${bitrate}`);
+    
     let codecPayloadType = -1;
     const codecRegex = /a=rtpmap:(\d+) (VP9|H264)\/90000/;
     for (const line of newSdpLines) {
@@ -42,6 +51,7 @@ const setVideoBitrate = (sdp: string, bitrate: number): string => {
             if (line.includes('VP9')) break;
         }
     }
+    
     if (codecPayloadType !== -1) {
         let fmtpLineIndex = -1;
         for (let i = 0; i < newSdpLines.length; i++) {
@@ -50,7 +60,9 @@ const setVideoBitrate = (sdp: string, bitrate: number): string => {
                 break;
             }
         }
+        
         const bitrateParams = `x-google-min-bitrate=${bitrate};x-google-start-bitrate=${bitrate};x-google-max-bitrate=${bitrate}`;
+
         if (fmtpLineIndex !== -1) {
             const existingLine = newSdpLines[fmtpLineIndex];
             if (!existingLine.includes('x-google-min-bitrate')) {
@@ -63,6 +75,7 @@ const setVideoBitrate = (sdp: string, bitrate: number): string => {
             }
         }
     }
+    
     return newSdpLines.join('\r\n');
 };
 
@@ -90,15 +103,12 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   const [showNerdStats, setShowNerdStats] = useState(false); 
   const [pickerStep, setPickerStep] = useState<'idle' | 'type' | 'genre' | 'reveal'>('idle');
   
-  const [currentSubtitleText, setCurrentSubtitleText] = useState('');
-  const [ccSize, setCcSize] = useState<'small' | 'medium' | 'large'>('medium');
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-
+  // Mobile Detection & Viewport
   const [isMobile, setIsMobile] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
 
-  const [volume, setVolume] = useState(1);
+  // Audio State
+  const [volume, setVolume] = useState(1); // Default to 100%
   const prevVolumeRef = useRef(1);
   
   const [stats, setStats] = useState<StreamStats>({ resolution: 'N/A', bitrate: '0', fps: 0, packetLoss: '0', latency: '0' });
@@ -106,7 +116,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
 
   const peerRef = useRef<SimplePeer.Instance | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const ambilightRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -121,19 +130,24 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   const electronAvailable = typeof window !== 'undefined' && window.electron !== undefined;
   const activeTheme = THEMES[currentTheme] || THEMES['default'];
 
+  // Handle Mobile Viewport Resize (Keyboard detection)
   useEffect(() => {
       const handleResize = () => {
           const isMob = window.innerWidth < 768;
           setIsMobile(isMob);
+          // Use visualViewport if available to account for virtual keyboard
           if (window.visualViewport) {
               setViewportHeight(window.visualViewport.height);
           } else {
               setViewportHeight(window.innerHeight);
           }
       };
+
       handleResize();
+      
       window.addEventListener('resize', handleResize);
       window.visualViewport?.addEventListener('resize', handleResize);
+      
       return () => {
           window.removeEventListener('resize', handleResize);
           window.visualViewport?.removeEventListener('resize', handleResize);
@@ -149,22 +163,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
       }
   }, [electronAvailable]);
 
-  useEffect(() => {
-      if (hasStream && streamRef.current && videoRef.current) {
-          if (videoRef.current.srcObject !== streamRef.current) {
-              videoRef.current.srcObject = streamRef.current;
-              videoRef.current.volume = volume;
-              videoRef.current.play().catch(() => {});
-          }
-      }
-      if (hasStream && streamRef.current && ambilightRef.current) {
-          if (ambilightRef.current.srcObject !== streamRef.current) {
-              ambilightRef.current.srcObject = streamRef.current;
-              ambilightRef.current.play().catch(() => {});
-          }
-      }
-  }, [hasStream, isTheaterMode, isFullscreen, isMobile]);
-
+  // Audio Volume Logic
   const toggleMute = () => {
       if (volume > 0) {
           prevVolumeRef.current = volume;
@@ -174,24 +173,13 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
       }
   };
 
+  // Sync volume with video element
   useEffect(() => {
       if (videoRef.current) {
           videoRef.current.volume = volume;
           videoRef.current.muted = (volume === 0);
       }
   }, [volume]);
-
-  const formatTime = (time: number) => {
-      if (!isFinite(time) || isNaN(time)) return "0:00";
-      const hours = Math.floor(time / 3600);
-      const minutes = Math.floor((time % 3600) / 60);
-      const seconds = Math.floor(time % 60);
-      
-      if (hours > 0) {
-          return `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-      }
-      return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  };
 
   const connectToHost = () => {
       if (!hostIpInput) return;
@@ -235,7 +223,6 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
               setHasStream(false);
               if (peerRef.current) peerRef.current.destroy();
               peerRef.current = null;
-              streamRef.current = null;
           };
 
       } catch (e) {
@@ -253,8 +240,8 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 });
 
                 p.on('signal', (data) => {
-                    if (data.type === 'answer' && enforcedBitrateRef.current > 0 && data.sdp) {
-                        data.sdp = setVideoBitrate(data.sdp, enforcedBitrateRef.current);
+                    if (data.type === 'answer' && enforcedBitrateRef.current > 0) {
+                        data.sdp = setVideoBitrate(data.sdp!, enforcedBitrateRef.current);
                     }
                     const signalPayload = { type: 'signal', data };
                     if (electronAvailable) {
@@ -271,10 +258,9 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 });
 
                 p.on('stream', (stream) => {
-                    streamRef.current = stream; 
                     if (videoRef.current) {
                         videoRef.current.srcObject = stream;
-                        videoRef.current.volume = volume; 
+                        videoRef.current.volume = volume; // Ensure initial volume is set
                         videoRef.current.play().then(() => setIsPlaying(true)).catch(e => console.log("Autoplay blocked", e));
                         setHasStream(true);
                     }
@@ -300,7 +286,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                         if (msg.type === 'members') setMembers(msg.payload);
                         
                         if (msg.type === 'hype') {
-                            spawnHypeEmojis(msg.payload.emoji); 
+                            spawnHypeEmojis(msg.payload.emoji); // Spawn locally only
                         }
 
                         if (msg.type === 'theme_change') {
@@ -311,22 +297,11 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                             enforcedBitrateRef.current = msg.payload;
                         }
 
-                        if (msg.type === 'subtitle_update') {
-                            setCurrentSubtitleText(msg.payload);
-                        }
-                        if (msg.type === 'cc_size') {
-                            setCcSize(msg.payload);
-                        }
-                        if (msg.type === 'duration_sync') {
-                            setDuration(msg.payload);
-                        }
-
                         if (msg.type === 'stream_stopped') {
                             setHasStream(false);
                             setIsPlaying(false);
                             if (videoRef.current) videoRef.current.srcObject = null;
                             if (ambilightRef.current) ambilightRef.current.srcObject = null;
-                            streamRef.current = null;
                             lastStatsRef.current = null;
                         }
                     } catch (e) { console.error("Parse error", e); }
@@ -335,6 +310,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 peerRef.current = p;
             }
             
+            // Extract piggybacked bitrate from offer before signaling
             if (payload.bitrate) {
                 enforcedBitrateRef.current = payload.bitrate;
             }
@@ -367,7 +343,10 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                           if (report.type === 'inbound-rtp' && report.kind === 'video') {
                               if (videoRef.current) {
                                   if (lastStatsRef.current) {
+                                      // Reset detection: if the new byte count is less than the old one,
+                                      // it means the counter has reset. We should skip this calculation round.
                                       if (report.bytesReceived < lastStatsRef.current.bytesReceived) {
+                                          // Just update the reference for the next calculation and continue
                                           lastStatsRef.current = {
                                               timestamp: report.timestamp,
                                               bytesReceived: report.bytesReceived,
@@ -383,6 +362,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                                           setStats(prev => ({ ...prev, bitrate: `${(bitrate / 1000).toFixed(1)} Mbps` }));
                                       }
                                   }
+                                  // Update the reference for the next interval
                                   lastStatsRef.current = {
                                       timestamp: report.timestamp,
                                       bytesReceived: report.bytesReceived,
@@ -506,6 +486,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
     };
   }, [hasStream]);
 
+    // Anti-flicker logic for fullscreen controls
     const clearControlsTimeout = () => {
         if (controlsTimeoutRef.current) {
             clearTimeout(controlsTimeoutRef.current);
@@ -536,6 +517,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
       resetInputIdleTimer();
   }, [isInputFocused]);
 
+  // Escape key for Theater Mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isTheaterMode) {
@@ -546,6 +528,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isTheaterMode]);
 
+  // Auto-wake chat
   useEffect(() => {
       const handleGlobalKeyDown = (e: KeyboardEvent) => {
           resetInputIdleTimer();
@@ -629,37 +612,40 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   };
 
   if (!isConnected && !hasStream) {
-      return (
-        <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 relative">
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
-          <button onClick={onBack} className="absolute top-8 left-8 text-gray-400 hover:text-white flex items-center gap-2 z-20"><ArrowLeft size={16} /> Back</button>
-          <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-xl rounded-3xl p-8 border border-white/10 shadow-2xl">
-            <div className="flex justify-center mb-6"><div className="bg-purple-500/20 p-4 rounded-2xl"><Users className="text-purple-400 w-8 h-8" /></div></div>
-            <h2 className="text-3xl font-bold text-center text-white mb-2">Join Party</h2>
-            <p className="text-gray-400 text-center mb-8 text-sm">
-                {electronAvailable ? "Enter Host IP Address" : "Connect to Host"}
-            </p>
-            <div className="space-y-6">
-              <div>
-                 <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Host IP Address</label>
-                 <input type="text" value={hostIpInput} onChange={(e) => setHostIpInput(e.target.value)} placeholder="100.x.x.x" className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50" />
-              </div>
-              <Button className="w-full py-4" size="lg" onClick={connectToHost} isLoading={isConnecting} disabled={!hostIpInput}>{isConnecting ? 'CONNECTING...' : 'JOIN'}</Button>
-              {!electronAvailable && <p className="text-blue-400 text-xs text-center mt-2">Running in Web Mode</p>}
-            </div>
-          </div>
-        </div>
-      );
+     return (
+       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 relative">
+         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+         <button onClick={onBack} className="absolute top-8 left-8 text-gray-400 hover:text-white flex items-center gap-2 z-20"><ArrowLeft size={16} /> Back</button>
+         <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-xl rounded-3xl p-8 border border-white/10 shadow-2xl">
+           <div className="flex justify-center mb-6"><div className="bg-purple-500/20 p-4 rounded-2xl"><Users className="text-purple-400 w-8 h-8" /></div></div>
+           <h2 className="text-3xl font-bold text-center text-white mb-2">Join Party</h2>
+           <p className="text-gray-400 text-center mb-8 text-sm">
+               {electronAvailable ? "Enter Host IP Address" : "Connect to Host"}
+           </p>
+           <div className="space-y-6">
+             <div>
+                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Host IP Address</label>
+                <input type="text" value={hostIpInput} onChange={(e) => setHostIpInput(e.target.value)} placeholder="100.x.x.x" className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50" />
+             </div>
+             <Button className="w-full py-4" size="lg" onClick={connectToHost} isLoading={isConnecting} disabled={!hostIpInput}>{isConnecting ? 'CONNECTING...' : 'JOIN'}</Button>
+             {!electronAvailable && <p className="text-blue-400 text-xs text-center mt-2">Running in Web Mode</p>}
+           </div>
+         </div>
+       </div>
+     );
   }
 
   const mobileTypingMode = isMobile && isInputFocused;
   const controlsVisible = showControls || (isInputFocused && !isInputIdle);
   const sidebarCollapsed = isTheaterMode || isFullscreen;
 
+  // Render Mobile Layout
   if (isMobile) {
     return (
         <div style={{ height: viewportHeight }} className="flex flex-col h-full bg-[#111] text-gray-100 overflow-hidden font-sans">
+            {/* Video Area (Sticky Top) */}
             <div className={`relative bg-black ${mobileTypingMode ? 'h-[30vh] flex-shrink-0' : 'flex-1'}`}>
+                {/* All video-related overlays and elements go here */}
                 <div 
                     ref={containerRef}
                     className="w-full h-full flex items-center justify-center relative bg-black group"
@@ -669,6 +655,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     
                     <div className={`absolute top-0 right-0 z-20 p-4 transition-opacity ${controlsVisible ? 'opacity-100' : 'opacity-0'}`} onClick={(e) => e.stopPropagation()}><Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button></div>
                     
+                    {/* Hype Emojis */}
                     <div className="absolute inset-0 overflow-hidden pointer-events-none z-40"> 
                         {floatingEmojis.map(emoji => (
                             <div key={emoji.id} className="absolute bottom-0 text-6xl animate-float" style={{left: `${emoji.x}%`, animationDuration: `${emoji.animationDuration}s`}}>
@@ -678,6 +665,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                         <style>{`@keyframes float { 0% { transform: translateY(100%) scale(0.8); opacity: 0; } 10% { opacity: 1; transform: translateY(80%) scale(1.2); } 100% { transform: translateY(-150%) scale(1); opacity: 0; } } .animate-float { animation-name: float; animation-timing-function: ease-out; }`}</style>
                     </div>
 
+                    {/* Nerd Stats */}
                     {showNerdStats && ( 
                         <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono pointer-events-none">
                             <h4 className={`${activeTheme.primary} font-bold mb-1`}>STREAM STATS</h4>
@@ -694,22 +682,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     <video ref={ambilightRef} className="absolute inset-0 w-full h-full object-cover blur-[80px] opacity-60" muted />
                     <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
                     
-                    {currentSubtitleText && hasStream && (
-                        <div className="absolute bottom-20 left-0 right-0 flex justify-center pointer-events-none z-30 px-4">
-                            <span 
-                                className="bg-black/60 text-white rounded-md px-3 py-1 text-center backdrop-blur-sm"
-                                style={{
-                                    fontSize: ccSize === 'small' ? '0.8rem' : ccSize === 'medium' ? '1rem' : '1.25rem',
-                                    textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-                                    fontFamily: 'sans-serif',
-                                    maxWidth: '90%'
-                                }}
-                            >
-                                {currentSubtitleText}
-                            </span>
-                        </div>
-                    )}
-
+                    {/* --- FIX 4: INSERTED OVERLAY CHAT (THEATER MODE) --- */}
                     {(isTheaterMode || isFullscreen) && (
                         <div 
                             className="absolute bottom-20 left-0 w-full z-[60] px-2"
@@ -733,10 +706,11 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                         </div>
                     )}
 
+                    {/* Controls */}
                     <div onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-xl border border-white/10">
                             <button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor"/>}</button>
-                            <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{volume === 0 ? <VolumeX size={18} className="text-red-400"/> : <Volume2 size={18} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div>
+                            <button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={18} className="text-red-400"/> : <Volume2 size={18} className="text-white"/>}</button>
                             <div className="w-px h-5 bg-white/20"/>
                             <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 rounded-full ${showNerdStats ? activeTheme.primary : 'text-white'}`}><Activity size={18}/></button>
                             <button onClick={togglePiP} className="p-2 text-white"><PictureInPicture size={18}/></button>
@@ -747,10 +721,11 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 </div>
             </div>
             
+            {/* Chat/Members Area */}
             <div className={`flex-1 min-h-0 flex flex-col bg-[#1e1f22] ${isTheaterMode ? 'hidden' : ''}`}>
                 <div className="flex p-2 gap-2"><button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'chat' ? 'bg-white/10' : ''}`}>CHAT</button><button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'members' ? 'bg-white/10' : ''}`}>MEMBERS</button></div>
                 <div className="flex-1 relative min-h-0">
-                    {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerInteraction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
+                    {activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}
                     {activeTab === 'members' && <div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">{m.name[0]}</div><span>{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500"/>}</div>))}</div>}
                 </div>
             </div>
@@ -758,9 +733,11 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
     );
   }
 
+  // Render Desktop Layout
   return (
     <div className="flex h-screen bg-[#111] text-gray-100 overflow-hidden font-sans">
       
+      {/* Video Area */}
       <div className="flex-1 flex flex-col relative bg-black min-w-0">
         <div 
             ref={containerRef}
@@ -768,6 +745,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
             onMouseMove={handleMouseMove}
             onClick={() => { if (!electronAvailable) { setShowControls(!showControls); } }}
         >
+            {/* Leave Confirmation Modal (Moved inside for fullscreen) */}
             {showExitConfirm && (
                 <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => e.stopPropagation()}>
                     <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
@@ -786,10 +764,12 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 </div>
             )}
             
+            {/* Top Controls */}
             <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className={`absolute top-0 right-0 z-20 p-4 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                 <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button>
             </div>
             
+            {/* Floating Emojis */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none z-40"> {floatingEmojis.map(emoji => (<div key={emoji.id} className="absolute bottom-0 text-6xl animate-float" style={{left: `${emoji.x}%`, animationDuration: `${emoji.animationDuration}s`}}>{emoji.emoji}</div>))} <style>{`@keyframes float { 0% { transform: translateY(100%) scale(0.8); opacity: 0; } 10% { opacity: 1; transform: translateY(80%) scale(1.2); } 100% { transform: translateY(-150%) scale(1); opacity: 0; } } .animate-float { animation-name: float; animation-timing-function: ease-out; }`}</style></div>
             
             {!hasStream && <div className="text-center"><div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 animate-blob"><Tv size={32} className="text-gray-500"/></div><p className="text-gray-500 font-medium">Waiting for stream...</p></div>}
@@ -800,87 +780,19 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
             
             {hasStream && !isPlaying && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30"><button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="bg-white/20 rounded-full p-6"><Play size={48} className="text-white fill-white ml-2"/></button></div>}
             
-            <video 
-                ref={videoRef} 
-                className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} 
-                autoPlay 
-                playsInline 
-                onPlay={() => setIsPlaying(true)} 
-                onPause={() => setIsPlaying(false)}
-                onTimeUpdate={() => setCurrentTime(videoRef.current?.currentTime || 0)}
-                // Removed onLoadedMetadata here; we rely on 'duration_sync' message from Host for total duration
-            />
+            <video ref={videoRef} className={`relative z-10 w-full h-full object-contain ${!hasStream ? 'hidden' : ''}`} autoPlay playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
             
-            {/* --- ADDED: Subtitle Overlay --- */}
-            {currentSubtitleText && hasStream && (
-                <div className="absolute bottom-24 left-0 right-0 flex justify-center pointer-events-none z-30 px-8">
-                    <span 
-                        className="bg-black/60 text-white rounded-md px-3 py-1 text-center backdrop-blur-sm"
-                        style={{
-                            fontSize: ccSize === 'small' ? '1rem' : ccSize === 'medium' ? '1.5rem' : '2.25rem',
-                            textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-                            fontFamily: 'sans-serif',
-                            maxWidth: '80%'
-                        }}
-                    >
-                        {currentSubtitleText}
-                    </span>
-                </div>
-            )}
-
-            {(isTheaterMode || isFullscreen) && <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className="absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60]"><Chat ref={chatRef} messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleHypeAction} onPickerAction={handlePickerInteraction} myId={myUserId} isOverlay={true} inputVisible={controlsVisible} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} theme={activeTheme}/></div>}
+            {(isTheaterMode || isFullscreen) && <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className="absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60]"><Chat ref={chatRef} messages={messages} onSendMessage={handleSendMessage} onAddReaction={() => {}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} isOverlay={true} inputVisible={controlsVisible} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} theme={activeTheme}/></div>}
             
-            <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                <div className="flex flex-col bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-2">
-                    
-                    <div className="flex items-center justify-center gap-4 px-6 py-1">
-                        <button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>
-                        {/* Fix 1: Audio Slider Match - Ensuring className matches exactly what user liked */}
-                        <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{volume === 0 ? <VolumeX size={18} className="text-red-400"/> : <Volume2 size={18} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div>
-                        
-                        <div className="w-px h-6 bg-white/20"/>
-                        
-                        {/* --- ADDED: Seek Bar (Read Only) --- */}
-                        <div className="flex items-center gap-2 min-w-[200px]">
-                             <span className="text-[10px] font-mono text-gray-400 w-8 text-right">{formatTime(currentTime)}</span>
-                             <input 
-                                 type="range" 
-                                 min={0} 
-                                 max={duration || 100} 
-                                 value={currentTime}
-                                 readOnly
-                                 className={`w-40 h-1 rounded-lg appearance-none bg-white/20 ${activeTheme.accent} cursor-default`}
-                                 style={{ pointerEvents: 'none' }}
-                             />
-                             <style>{`
-                                input[type=range][readonly]::-webkit-slider-thumb {
-                                    -webkit-appearance: none;
-                                    width: 0;
-                                    height: 0;
-                                    opacity: 0;
-                                }
-                                input[type=range][readonly]::-moz-range-thumb {
-                                    width: 0;
-                                    height: 0;
-                                    opacity: 0;
-                                }
-                             `}</style>
-                             {/* Fix 3: Show actual duration */}
-                             <span className="text-[10px] font-mono text-gray-400 w-8">{duration === Infinity ? formatTime(currentTime) : formatTime(duration)}</span>
-                        </div>
-
-                        <div className="w-px h-6 bg-white/20"/> 
-                        <div className="flex gap-2 items-center"><button onClick={() => handlePickerAction('start_picker')} disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')} className={`p-2 rounded-full ${activeTheme.primary}`} title="Suggest Movie"><Clapperboard size={18}/></button><button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 rounded-full ${showNerdStats ? activeTheme.primary : 'text-white'}`} title="Nerd Stats"><Activity size={18}/></button><button onClick={togglePiP} className="p-2 text-white" title="Picture-in-Picture"><PictureInPicture size={18}/></button><button onClick={toggleTheaterMode} className={`p-2 rounded-full ${isTheaterMode ? activeTheme.primary : 'text-white'}`} title="Theater Mode"><Tv size={18}/></button><button onClick={toggleFullscreen} className="p-2 text-white" title="Fullscreen">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button></div>
-                    </div>
-                </div>
-            </div>
+            <div onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}><div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10"><button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button><div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-24 transition-all"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none ${activeTheme.accent}`}/></div></div><div className="w-px h-6 bg-white/20"/> <div className="flex gap-2 items-center"><button onClick={() => handlePickerAction('start_picker')} disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')} className={`p-2 rounded-full ${activeTheme.primary}`} title="Suggest Movie"><Clapperboard size={18}/></button><button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 rounded-full ${showNerdStats ? activeTheme.primary : 'text-white'}`} title="Nerd Stats"><Activity size={18}/></button><button onClick={togglePiP} className="p-2 text-white" title="Picture-in-Picture"><PictureInPicture size={18}/></button><button onClick={toggleTheaterMode} className={`p-2 rounded-full ${isTheaterMode ? activeTheme.primary : 'text-white'}`} title="Theater Mode"><Tv size={18}/></button><button onClick={toggleFullscreen} className="p-2 text-white" title="Fullscreen">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button></div></div></div>
         </div>
       </div>
 
+      {/* Sidebar */}
       <div className={`bg-black/40 backdrop-blur-xl flex flex-col md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0' : 'w-80 opacity-100'} ${activeTheme.border} ${activeTheme.glow}`}>
         <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
           <div className="flex p-2 gap-2"><button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'chat' ? 'bg-white/10' : ''}`}>CHAT</button><button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'members' ? 'bg-white/10' : ''}`}>MEMBERS</button></div>
-          <div className="flex-1 relative min-h-0">{activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerInteraction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}{activeTab === 'members' && <div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">{m.name[0]}</div><span>{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500"/>}</div>))}</div>}</div>
+          <div className="flex-1 relative min-h-0">{activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}{activeTab === 'members' && <div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl"><div className="flex items-center gap-3"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.isHost ? 'bg-yellow-400 text-black' : 'bg-white/10'}`}>{m.name[0]}</div><span>{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500"/>}</div>))}</div>}</div>
         </div>
       </div>
     </div>
