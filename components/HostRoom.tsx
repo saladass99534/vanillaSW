@@ -304,23 +304,31 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);  
   }, [isTheaterMode]);  
 
-  // --- STEP 1: THE WAKE ON TYPE LOGIC ---
+  // --- STEP 1: ROBUST WAKE ON TYPE LOGIC (With Fix) ---
   useEffect(() => {  
       const handleGlobalKeyDown = (e: KeyboardEvent) => {  
           resetInputIdleTimer();  
-          // If we are in Theater/Fullscreen AND not already typing...
-          if ((isTheaterMode || isFullscreen) && !isInputFocused) {
-              // Check if it's a regular character key (ignore Ctrl, Alt, F1-F12, etc.)
+          
+          // 1. Safety Check: If user is ALREADY typing in an input, ignore this logic
+          const activeTag = document.activeElement?.tagName.toLowerCase();
+          if (activeTag === 'input' || activeTag === 'textarea') return;
+
+          // 2. If we are in Theater/Fullscreen...
+          if (isTheaterMode || isFullscreen) {
+              // Check for single char keys (ignore Ctrl, Alt, F1-F12, etc.)
               if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {  
                   setShowControls(true);  
-                  // Force focus to the chat input
+                  
+                  // 3. Force focus immediately (This pulls focus away from the video)
                   chatRef.current?.focusInput();
               }  
           }  
       };  
-      window.addEventListener('keydown', handleGlobalKeyDown);  
-      return () => window.removeEventListener('keydown', handleGlobalKeyDown);  
-  }, [isTheaterMode, isFullscreen, isInputFocused]);  
+      
+      // FIX APPLIED HERE: Use 'document' + 'true' (Capture Phase)
+      document.addEventListener('keydown', handleGlobalKeyDown, true);  
+      return () => document.removeEventListener('keydown', handleGlobalKeyDown, true);  
+  }, [isTheaterMode, isFullscreen]);  
 
   const handleHypeAction = (emoji: string) => {  
       const newEmojis = Array.from({ length: 20 }).map((_, i) => ({ id: Math.random().toString(36) + i, emoji, x: Math.random() * 90 + 5, animationDuration: 3 + Math.random() * 4 }));  
