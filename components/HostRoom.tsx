@@ -127,7 +127,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [showExitConfirm, setShowExitConfirm] = useState(false); 
   const [showNerdStats, setShowNerdStats] = useState(false); 
   
-  // --- CHAT PIN STATE (0=Off, 1=2msg, 2=Stick) ---
+  // --- CHAT PIN STATE (0=Disabled, 1=2 Msg Stay, 2=Stick) ---
+  // Using the exact state name you requested
   const [pinState, setPinState] = useState<number>(0); 
     
   const [seenTitles, setSeenTitles] = useState<Set<string>>(new Set()); 
@@ -298,12 +299,18 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);  
   }, [isTheaterMode]);  
 
+  // --- KEYBOARD AUTOFOCUS FIX ---
   useEffect(() => {  
       const handleGlobalKeyDown = (e: KeyboardEvent) => {  
           resetInputIdleTimer();  
-          if ((isTheaterMode || isFullscreen) && !isInputFocused && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {  
-              setShowControls(true);  
-              chatRef.current?.focusInput();  
+          if ((isTheaterMode || isFullscreen) && !isInputFocused) {
+              // Allow typing if key is a single character, ensuring no modifiers are pressed
+              if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {  
+                  setShowControls(true);  
+                  // Force focus immediately
+                  chatRef.current?.focusInput();
+                  // We do NOT want to preventDefault here, because we want that first letter to be typed!
+              }  
           }  
       };  
       window.addEventListener('keydown', handleGlobalKeyDown);  
@@ -809,7 +816,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
             {(isTheaterMode || isFullscreen) && (  
                <div className={`absolute bottom-32 left-4 w-[400px] max-w-[80vw] z-[60] flex flex-col justify-end transition-opacity duration-300`}>  
-                  {/* NO EXTERNAL BUTTON HERE (IT IS INSIDE CHAT) */}
                   <Chat 
                     ref={chatRef} 
                     messages={messages} 
@@ -822,11 +828,11 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                     onInputFocus={() => setIsInputFocused(true)} 
                     onInputBlur={() => setIsInputFocused(false)} 
                     onInputChange={resetInputIdleTimer} 
-                    // This prop tells Chat to render in overlay mode (which likely includes the pin button)
+                    // This was present in your old code and likely controls the overlay style
                     isOverlay={true} 
-                    // Control input visibility
-                    inputVisible={(showControls || (isInputFocused && !isInputIdle))}
-                    // Pass state and setter to wire up the internal button
+                    // This controls the input bar visibility as shown in your screenshot
+                    // --- KEY CHANGE: Ensure input is visible even if controls are hidden, so we can type into it ---
+                    inputVisible={true}
                     // @ts-ignore
                     pinState={pinState} 
                     // @ts-ignore
