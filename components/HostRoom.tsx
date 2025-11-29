@@ -57,7 +57,7 @@ const setVideoBitrate = (sdp: string, bitrate: number): string => {
     // 2. Identify VP9 Payload Type
     let vp9PayloadType = -1;
     let h264PayloadType = -1;
-    
+     
     for (const line of sdpLines) {
         if (line.startsWith('a=rtpmap:')) {
             if (line.includes('VP9/90000')) {
@@ -75,11 +75,11 @@ const setVideoBitrate = (sdp: string, bitrate: number): string => {
         const mLineParts = sdpLines[videoMLineIndex].split(' ');
         const header = mLineParts.slice(0, 3);
         let payloads = mLineParts.slice(3);
-        
+         
         // Remove VP9 from current position and put it first
         payloads = payloads.filter(p => parseInt(p) !== vp9PayloadType);
         payloads.unshift(vp9PayloadType.toString());
-        
+         
         sdpLines[videoMLineIndex] = [...header, ...payloads].join(' ');
     }
 
@@ -87,13 +87,13 @@ const setVideoBitrate = (sdp: string, bitrate: number): string => {
     if (bitrate > 0) {
         sdpLines = sdpLines.filter(line => !line.startsWith('b=AS:'));
         sdpLines.splice(videoMLineIndex + 1, 0, `b=AS:${bitrate}`);
-        
+         
         // Apply strict google params to preferred codec
         const targetPayload = vp9PayloadType !== -1 ? vp9PayloadType : h264PayloadType;
         if (targetPayload !== -1) {
             let fmtpIndex = sdpLines.findIndex(l => l.startsWith(`a=fmtp:${targetPayload}`));
             const params = `x-google-min-bitrate=${bitrate};x-google-start-bitrate=${bitrate};x-google-max-bitrate=${bitrate}`;
-            
+             
             if (fmtpIndex !== -1) {
                 if (!sdpLines[fmtpIndex].includes('x-google-min-bitrate')) {
                     sdpLines[fmtpIndex] += `; ${params}`;
@@ -126,9 +126,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [isFullscreen, setIsFullscreen] = useState(false); 
   const [showExitConfirm, setShowExitConfirm] = useState(false); 
   const [showNerdStats, setShowNerdStats] = useState(false); 
-  
+   
   // --- CHAT PIN STATE (0=Disabled, 1=2 Msg Stay, 2=Stick) ---
-  // Using the exact state name you requested
   const [pinState, setPinState] = useState<number>(0); 
     
   const [seenTitles, setSeenTitles] = useState<Set<string>>(new Set()); 
@@ -153,7 +152,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [isRefreshingSources, setIsRefreshingSources] = useState(false); 
     
   const [fileStreamUrl, setFileStreamUrl] = useState<string | null>(null); 
-  const fileVideoRef = useRef<HTMLVideoElement>(null);   
+  const fileVideoRef = useRef<HTMLVideoElement>(null);    
   const audioContextRef = useRef<AudioContext | null>(null); 
   const audioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null); 
 
@@ -169,7 +168,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [currentSubtitleText, setCurrentSubtitleText] = useState(''); 
 
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]); 
-  const [audioSource, setAudioSource] = useState<string>('system');   
+  const [audioSource, setAudioSource] = useState<string>('system');    
   const [streamQuality, setStreamQuality] = useState<'1080p' | '1440p' | '4k'>('1080p'); 
   const [streamFps, setStreamFps] = useState<30 | 60>(60); 
   const [streamBitrate, setStreamBitrate] = useState<number>(0); 
@@ -286,10 +285,16 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     return () => { document.removeEventListener('fullscreenchange', handleFsChange); performCleanup(); };  
   }, []);  
 
+  // --- STEP 3: THE IDLE TIMER LOGIC ---
   const resetInputIdleTimer = () => {  
       setIsInputIdle(false);  
       if (inputIdleTimeoutRef.current) clearTimeout(inputIdleTimeoutRef.current);  
-      if (isInputFocused) inputIdleTimeoutRef.current = setTimeout(() => setIsInputIdle(true), 4000);  
+      // If focused, wait 4 seconds before marking as idle (hiding the bar)
+      if (isInputFocused) {
+        inputIdleTimeoutRef.current = setTimeout(() => {
+            setIsInputIdle(true);
+        }, 4000);
+      }
   };  
   useEffect(() => { resetInputIdleTimer(); }, [isInputFocused]);  
 
@@ -299,17 +304,17 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);  
   }, [isTheaterMode]);  
 
-  // --- KEYBOARD AUTOFOCUS FIX ---
+  // --- STEP 1: THE WAKE ON TYPE LOGIC ---
   useEffect(() => {  
       const handleGlobalKeyDown = (e: KeyboardEvent) => {  
           resetInputIdleTimer();  
+          // If we are in Theater/Fullscreen AND not already typing...
           if ((isTheaterMode || isFullscreen) && !isInputFocused) {
-              // Allow typing if key is a single character, ensuring no modifiers are pressed
+              // Check if it's a regular character key (ignore Ctrl, Alt, F1-F12, etc.)
               if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {  
                   setShowControls(true);  
-                  // Force focus immediately
+                  // Force focus to the chat input
                   chatRef.current?.focusInput();
-                  // We do NOT want to preventDefault here, because we want that first letter to be typed!
               }  
           }  
       };  
@@ -599,7 +604,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           }  
 
           streamRef.current = finalStream;  
-           
+            
           // --- FIX: DESKTOP BROWSER QUALITY (MOTION) --- 
           finalStream.getVideoTracks().forEach(track => { 
               if ('contentHint' in track) { 
@@ -619,7 +624,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           broadcast({ type: 'bitrate_sync', payload: streamBitrate });  
           setIsSharing(true);  
           peersRef.current.forEach(p => p.addStream(finalStream));  
-           
+            
           broadcast({ type: 'metadata', payload: { title: movieTitle } }); 
 
       } catch (e) { console.error(e); alert("Failed to start stream: " + e); }  
@@ -634,7 +639,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       if (fileVideoRef.current) {  
           fileVideoRef.current.pause();  
           fileVideoRef.current.src = "";   
-          fileVideoRef.current.load();     
+          fileVideoRef.current.load();      
           setIsPlayingFile(false);  
       }  
       setFileStreamUrl(null);  
@@ -825,14 +830,17 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                     onPickerAction={handlePickerInteraction} 
                     myId={'HOST'} 
                     theme={activeTheme} 
+                    // --- STEP 2: VISIBILITY LOGIC (Smart Props) ---
+                    // Track focus state
                     onInputFocus={() => setIsInputFocused(true)} 
                     onInputBlur={() => setIsInputFocused(false)} 
+                    // Reset the idle timer on every keystroke
                     onInputChange={resetInputIdleTimer} 
-                    // This was present in your old code and likely controls the overlay style
+                    
                     isOverlay={true} 
-                    // This controls the input bar visibility as shown in your screenshot
-                    // --- KEY CHANGE: Ensure input is visible even if controls are hidden, so we can type into it ---
-                    inputVisible={true}
+                    // Calculate visibility: controls active OR (focused AND not idle)
+                    inputVisible={(showControls || (isInputFocused && !isInputIdle))}
+                    
                     // @ts-ignore
                     pinState={pinState} 
                     // @ts-ignore
@@ -841,6 +849,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
               </div>  
             )}  
 
+            {/* Controls Bar: Uses same logic for visibility */}
             <div className={`absolute bottom-8 z-50 transition-all duration-500 ${showControls || (isInputFocused && !isInputIdle) ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`}>  
                 <div className="flex flex-col items-center gap-2">  
                     <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-black/50 hover:scale-[1.02] transition-all">  
@@ -850,7 +859,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         {audioSource === 'file' && (
                           <div className="relative">
                             <button onClick={() => setShowCCMenu(!showCCMenu)} className={`p-2 rounded-full transition-colors ${subtitleUrl || showCCMenu ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}><Captions size={20} /></button>
-                            {/* CC MENU FIXED: Only render if showCCMenu is true */}
                             {showCCMenu && (
                                 <div className="absolute bottom-full left-1/2 -ml-24 mb-4 w-48 bg-[#151618] border border-white/10 rounded-xl p-3 shadow-2xl">
                                     <div className="flex flex-col gap-2">
