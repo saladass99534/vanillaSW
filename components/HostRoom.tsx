@@ -151,7 +151,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [showAudioHelp, setShowAudioHelp] = useState(false); 
 
   const [isSharing, setIsSharing] = useState(false); 
-  const [localVolume, setLocalVolume] = useState(0.5); // Default to 50% volume for host monitoring 
+  const [localVolume, setLocalVolume] = useState(0.5); // Default Volume 50%
 
   const [stats, setStats] = useState<StreamStats>({ resolution: 'N/A', bitrate: '0', fps: 0, packetLoss: '0', latency: '0' }); 
     
@@ -445,17 +445,17 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       return () => { if (statsIntervalRef.current) clearInterval(statsIntervalRef.current); }; 
   }, [isSharing, showNerdStats]); 
 
-  // --- CRITICAL FIX FOR HOST AUDIO MONITORING (VB-CABLE) ---
+  // --- AUDIO MONITORING FIX: PREVIEW VOLUME ---
   useEffect(() => { 
-      if (fileVideoRef.current) fileVideoRef.current.volume = 1.0; // Hidden file player always at 100% (captured by stream)
+      if (fileVideoRef.current) fileVideoRef.current.volume = 1.0; 
       
+      // Control preview volume for ALL modes (Screen, File, or VB-Cable)
       if (videoRef.current) { 
-          // Applies volume to the PREVIEW player regardless of source (File, Screen, or VB-Cable)
           videoRef.current.volume = localVolume; 
           videoRef.current.muted = (localVolume === 0); 
       } 
   }, [localVolume, sourceTab]); 
-  // ---------------------------------------------------------
+  // ------------------------------------------
 
   const handlePeerDisconnect = (socketId: string) => { if (peersRef.current.has(socketId)) { peersRef.current.get(socketId)?.destroy(); peersRef.current.delete(socketId); } setMembers(prev => prev.filter(m => m.id !== socketId)); broadcast({ type: 'members', payload: members.filter(m => m.id !== socketId) }); }; 
   const handleData = (socketId: string, data: any) => {  
@@ -469,11 +469,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 if(streamRef.current) sendDataToPeer(p, { type: 'bitrate_sync', payload: streamBitrateRef.current }); 
                 sendDataToPeer(p, { type: 'cc_size', payload: ccSize }); 
                 
-                // --- ADDED METADATA SYNC FOR NEW JOINERS ---
                 if (isSharing && movieTitle) {
                     sendDataToPeer(p, { type: 'metadata', payload: { title: movieTitle } });
                 }
-                // -------------------------------------------
             } 
         } 
         if (parsed.type === 'chat') { const msg = parsed.payload; setMessages(prev => { if (prev.some(m => m.id === msg.id)) return prev; return [...prev, msg]; }); broadcast({ type: 'chat', payload: msg }); } 
@@ -539,19 +537,43 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                   audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } }, 
                   video: videoConstraints 
               } as any); 
-              // --- FIXED: Removed setLocalVolume(0) to allow monitoring ---
+              // Removed setLocalVolume(0) here to allow monitoring
           } else { 
+              // --- AUDIO SYNC FIX FOR VB-CABLE / EXTERNAL MIC ---
               const videoStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any); 
               try { 
+                  // 1. Get raw audio with relaxed latency (removed latency: 0)
                   const audioStream = await navigator.mediaDevices.getUserMedia({ 
-                      audio: { deviceId: { exact: audioSource }, autoGainControl: false, echoCancellation: false, noiseSuppression: false, channelCount: 2, latency: 0 } as any, 
+                      audio: { deviceId: { exact: audioSource }, autoGainControl: false, echoCancellation: false, noiseSuppression: false, channelCount: 2 } as any, 
                       video: false 
                   }); 
-                  finalStream = new MediaStream([...videoStream.getVideoTracks(), ...audioStream.getAudioTracks()]); 
+
+                  // 2. Route through AudioContext to align clocks with the system
+                  if (!audioContextRef.current) { 
+                      const AudioContext = window.AudioContext || (window as any).webkitAudioContext; 
+                      audioContextRef.current = new AudioContext(); 
+                  }
+                  const ctx = audioContextRef.current; 
+                  const source = ctx.createMediaStreamSource(audioStream); 
+                  const destination = ctx.createMediaStreamDestination(); 
+                  source.connect(destination); 
+
+                  // 3. Combine processed audio with video
+                  finalStream = new MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]); 
               } catch (audioErr) { console.error(audioErr); finalStream = videoStream; } 
+              // --------------------------------------------------
           } 
 
           streamRef.current = finalStream; 
+          
+          // --- FIX: DESKTOP BROWSER QUALITY (MOTION) ---
+          finalStream.getVideoTracks().forEach(track => {
+              if ('contentHint' in track) {
+                  track.contentHint = 'motion';
+              }
+          });
+          // ---------------------------------------------
+
           if (videoRef.current) { 
               videoRef.current.srcObject = finalStream; 
               videoRef.current.play().catch(e => console.error("Preview Play Error", e)); 
@@ -564,9 +586,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           setIsSharing(true); 
           peersRef.current.forEach(p => p.addStream(finalStream)); 
           
-          // --- ADDED METADATA BROADCAST ON START ---
           broadcast({ type: 'metadata', payload: { title: movieTitle } });
-          // -----------------------------------------
 
       } catch (e) { console.error(e); alert("Failed to start stream: " + e); } 
   }; 
