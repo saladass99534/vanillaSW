@@ -177,6 +177,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       broadcast({ type: 'cc_size', payload: ccSize }); 
   }, [ccSize]); 
 
+  // --- SUBTITLE & VIDEO DECODING FIX ---
+  // 1x1 Pixel trick ensures browser GPU decoder stays active for HEVC/x265 files
   useEffect(() => {
     const video = fileVideoRef.current;
     if (!video || !subtitleUrl) return;
@@ -291,7 +293,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   }; 
 
   const handleFileTimeUpdate = () => { 
-      if (fileVideoRef.current) setCurrentTime(fileVideoRef.current.currentTime); 
+      if (fileVideoRef.current) {
+          setCurrentTime(fileVideoRef.current.currentTime);
+          // Broadcast duration to viewers to replace 'LIVE' with actual time
+          if (fileVideoRef.current.duration) {
+              broadcast({ type: 'duration_sync', payload: fileVideoRef.current.duration });
+          }
+      }
   }; 
 
   const handleFileSeek = (e: React.ChangeEvent<HTMLInputElement>) => { 
@@ -605,7 +613,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             onMouseMove={() => { setShowControls(true); resetInputIdleTimer(); if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500); }}> 
              
             {/* FIX: Removed opacity-0, added z-index trick to keep video active for x265 capture */}
-            <video ref={fileVideoRef} src={fileStreamUrl || ''} className="absolute top-0 left-0 w-full h-full -z-50 opacity-1 pointer-events-none" playsInline crossOrigin="anonymous" onTimeUpdate={handleFileTimeUpdate} onLoadedMetadata={() => fileVideoRef.current && setDuration(fileVideoRef.current.duration)}> 
+            <video ref={fileVideoRef} src={fileStreamUrl || ''} className="fixed top-0 left-0 w-[1px] h-[1px] opacity-[0.01] pointer-events-none z-[100]" playsInline crossOrigin="anonymous" onTimeUpdate={handleFileTimeUpdate} onLoadedMetadata={() => fileVideoRef.current && setDuration(fileVideoRef.current.duration)}> 
                 {subtitleUrl && <track key={subtitleUrl} label="English" kind="subtitles" src={subtitleUrl} default />} 
             </video> 
 
@@ -749,6 +757,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         {audioSource === 'file' && (<button onClick={toggleFilePlay} className="p-2 hover:bg-white/10 rounded-full text-white transition-colors">{isPlayingFile ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>)} 
                         {audioSource === 'file' && (<div className="relative"><button onClick={() => setShowCCMenu(!showCCMenu)} className={`p-2 rounded-full transition-colors ${subtitleUrl ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}><Captions size={20} /></button>{showCCMenu && (<div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-48 bg-[#151618] border border-white/10 rounded-xl p-3 shadow-2xl animate-in slide-in-from-bottom-2"><div className="flex flex-col gap-2"><button onClick={loadSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left"><Plus size={14} className="text-blue-400"/> Add Subs (.vtt/.srt)</button>{subtitleUrl && (<><button onClick={removeSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left text-red-400"><Trash2 size={14} /> Remove Subtitles</button><div className="h-px bg-white/10 my-1"></div><div className="flex justify-between bg-black/30 rounded p-1"><button onClick={() => setCcSize('small')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'small' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>S</button><button onClick={() => setCcSize('medium')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'medium' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>M</button><button onClick={() => setCcSize('large')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'large' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>L</button></div></>)}</div></div>)}</div>)} 
                         
+                        {/* --- SEEKBAR INTEGRATED INTO CONTROLS (HOST) --- */}
                         {isSharing && audioSource === 'file' && (
                             <>
                                 <div className="w-px h-6 bg-white/10 mx-2"></div>
@@ -759,6 +768,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                 </div>
                             </>
                         )}
+                        {/* ----------------------------------------------- */}
 
                         <div className="w-px h-6 bg-white/10 mx-2"></div>
                         <div className="flex items-center gap-2"> 
