@@ -184,9 +184,14 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
 
   const formatTime = (time: number) => {
       if (!isFinite(time) || isNaN(time)) return "0:00";
-      const mins = Math.floor(time / 60);
-      const secs = Math.floor(time % 60);
-      return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+      const hours = Math.floor(time / 3600);
+      const minutes = Math.floor((time % 3600) / 60);
+      const seconds = Math.floor(time % 60);
+      
+      if (hours > 0) {
+          return `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+      }
+      return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
   const connectToHost = () => {
@@ -834,7 +839,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     <div className="flex items-center justify-center gap-4 px-6 py-1">
                         <button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>
                         {/* Fix 1: Audio Slider Match */}
-                        <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div>
+                        <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{volume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} className="text-white"/>}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div>
                         
                         <div className="w-px h-6 bg-white/20"/>
                         
@@ -877,7 +882,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
       <div className={`bg-black/40 backdrop-blur-xl flex flex-col md:flex-none min-h-0 min-w-0 transition-all duration-500 ease-in-out rounded-l-3xl border-l shadow-2xl overflow-hidden ${sidebarCollapsed ? 'w-0 max-w-0 opacity-0 border-0' : 'w-80 opacity-100'} ${activeTheme.border} ${activeTheme.glow}`}>
         <div className={`min-w-[320px] h-full flex flex-col transition-transform duration-500 ease-in-out ${sidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
           <div className="flex p-2 gap-2"><button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'chat' ? 'bg-white/10' : ''}`}>CHAT</button><button onClick={() => setActiveTab('members')} className={`flex-1 py-2 text-xs font-bold rounded-full ${activeTab === 'members' ? 'bg-white/10' : ''}`}>MEMBERS</button></div>
-          <div className="flex-1 relative min-h-0">{activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerAction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}{activeTab === 'members' && <div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">{m.name[0]}</div><span>{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500"/>}</div>))}</div>}</div>
+          <div className="flex-1 relative min-h-0">{activeTab === 'chat' && <div className="absolute inset-0 flex flex-col"><Chat messages={messages} onSendMessage={handleSendMessage} onAddReaction={()=>{}} onHypeEmoji={handleSendHype} onPickerAction={handlePickerInteraction} myId={myUserId} theme={activeTheme} onInputFocus={() => setIsInputFocused(true)} onInputBlur={() => setIsInputFocused(false)} onInputChange={resetInputIdleTimer} /></div>}{activeTab === 'members' && <div className="p-4 space-y-2 overflow-y-auto">{members.map(m => (<div key={m.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">{m.name[0]}</div><span>{m.name}</span></div>{m.isHost && <Crown size={14} className="text-yellow-500"/>}</div>))}</div>}</div>
         </div>
       </div>
     </div>
