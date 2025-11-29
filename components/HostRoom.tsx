@@ -138,9 +138,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [ccSize, setCcSize] = useState<'small' | 'medium' | 'large'>('medium'); 
   const [subtitleUrl, setSubtitleUrl] = useState<string | null>(null); 
 
-  // --- SUBTITLE STATE ---
-  const [currentSubtitleText, setCurrentSubtitleText] = useState('');
-  // ---------------------
+  const [currentSubtitleText, setCurrentSubtitleText] = useState(''); 
 
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]); 
   const [audioSource, setAudioSource] = useState<string>('system');  
@@ -175,13 +173,10 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0; 
   const activeTheme = THEMES[currentTheme] || THEMES['default']; 
 
-  // Effect: Broadcast CC Size Changes 
   useEffect(() => { 
       broadcast({ type: 'cc_size', payload: ccSize }); 
   }, [ccSize]); 
 
-  // --- HOST SUBTITLE SYNC LOGIC ---
-  // Listens to hidden player, updates Host UI, and broadcasts text to Viewers
   useEffect(() => {
     const video = fileVideoRef.current;
     if (!video || !subtitleUrl) return;
@@ -199,11 +194,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                             const rawText = activeCues[0].text;
                             const cleanText = rawText.replace(/<[^>]*>/g, ''); 
                             setCurrentSubtitleText(cleanText);
-                            // BROADCAST TO VIEWERS
                             broadcast({ type: 'subtitle_update', payload: cleanText });
                         } else {
                             setCurrentSubtitleText('');
-                            // BROADCAST CLEAR
                             broadcast({ type: 'subtitle_update', payload: '' });
                         }
                     };
@@ -213,7 +206,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     }, 500);
     return () => clearTimeout(timer);
   }, [subtitleUrl]);
-  // --------------------------------
 
   useEffect(() => { 
     if (electronAvailable) window.electron.setWindowOpacity(browserFix ? 0.999 : 1.0); 
@@ -380,7 +372,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             sendDataToPeer(p, { type: 'members', payload: members });  
             sendDataToPeer(p, { type: 'theme_change', payload: currentTheme });  
             if (streamRef.current) sendDataToPeer(p, { type: 'bitrate_sync', payload: streamBitrateRef.current }); 
-            // Sync CC size preference to new joiner
             sendDataToPeer(p, { type: 'cc_size', payload: ccSize });
         }); 
         p.on('data', (data) => handleData(socketId, data)); 
@@ -711,7 +702,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 playsInline  
             /> 
             
-            {/* --- HOST SUBTITLE OVERLAY --- */}
             {currentSubtitleText && isSharing && (
                 <div className="absolute bottom-24 left-0 right-0 flex justify-center pointer-events-none z-30 px-8">
                     <span 
@@ -727,7 +717,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                     </span>
                 </div>
             )}
-            {/* ----------------------------- */}
 
             {showNerdStats && ( 
                 <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2"> 
@@ -744,18 +733,26 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
             <div className={`absolute bottom-8 z-50 transition-all duration-500 ${showControls || (isInputFocused && !isInputIdle) ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`}> 
                 <div className="flex flex-col items-center gap-2"> 
-                    {isSharing && audioSource === 'file' && ( 
-                        <div className="bg-black/60 backdrop-blur-xl border border-white/10 rounded-full px-4 py-2 flex items-center gap-3 mb-1 animate-in slide-in-from-bottom-2 fade-in shadow-xl"> 
-                             <span className="text-[10px] font-mono text-gray-300 w-10 text-right">{formatTime(currentTime)}</span> 
-                             <input type="range" min={0} max={duration || 100} value={currentTime} onChange={handleFileSeek} className={`w-48 h-1 rounded-lg appearance-none cursor-pointer bg-white/20 ${activeTheme.accent}`} /> 
-                             <span className="text-[10px] font-mono text-gray-300 w-10">{formatTime(duration)}</span> 
-                        </div> 
-                    )} 
                     <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-black/50 hover:scale-[1.02] transition-all"> 
                         <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{localVolume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={localVolume} onChange={(e) => setLocalVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div> 
                         <div className="w-px h-6 bg-white/10"></div> 
                         {audioSource === 'file' && (<button onClick={toggleFilePlay} className="p-2 hover:bg-white/10 rounded-full text-white transition-colors">{isPlayingFile ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>)} 
                         {audioSource === 'file' && (<div className="relative"><button onClick={() => setShowCCMenu(!showCCMenu)} className={`p-2 rounded-full transition-colors ${subtitleUrl ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}><Captions size={20} /></button>{showCCMenu && (<div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-48 bg-[#151618] border border-white/10 rounded-xl p-3 shadow-2xl animate-in slide-in-from-bottom-2"><div className="flex flex-col gap-2"><button onClick={loadSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left"><Plus size={14} className="text-blue-400"/> Add Subs (.vtt/.srt)</button>{subtitleUrl && (<><div className="h-px bg-white/10 my-1"></div><div className="flex justify-between bg-black/30 rounded p-1"><button onClick={() => setCcSize('small')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'small' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>S</button><button onClick={() => setCcSize('medium')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'medium' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>M</button><button onClick={() => setCcSize('large')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'large' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>L</button></div></>)}</div></div>)}</div>)} 
+                        
+                        {/* --- SEEKBAR INTEGRATED INTO CONTROLS (HOST) --- */}
+                        {isSharing && audioSource === 'file' && (
+                            <>
+                                <div className="w-px h-6 bg-white/10 mx-2"></div>
+                                <div className="flex items-center gap-2 min-w-[200px]">
+                                    <span className="text-[10px] font-mono text-gray-300 w-10 text-right">{formatTime(currentTime)}</span>
+                                    <input type="range" min={0} max={duration || 100} value={currentTime} onChange={handleFileSeek} className={`w-40 h-1 rounded-lg appearance-none cursor-pointer bg-white/20 ${activeTheme.accent}`} />
+                                    <span className="text-[10px] font-mono text-gray-300 w-10">{formatTime(duration)}</span>
+                                </div>
+                            </>
+                        )}
+                        {/* ----------------------------------------------- */}
+
+                        <div className="w-px h-6 bg-white/10 mx-2"></div>
                         <div className="flex items-center gap-2"> 
                             <button onClick={startSharedPicker} disabled={(pickerStep !== 'idle' && pickerStep !== 'reveal')} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${(pickerStep !== 'idle' && pickerStep !== 'reveal') ? 'text-gray-600 cursor-not-allowed' : `${activeTheme.primary}`}`} title="Suggest Movie"><Clapperboard size={20} /></button> 
                             <button onClick={() => setShowNerdStats(!showNerdStats)} className={`p-2 hover:bg-white/10 rounded-full transition-colors ${showNerdStats ? `${activeTheme.primary}` : 'text-gray-400 hover:text-white'}`} title="Nerd Stats"><Activity size={20} /></button> 
