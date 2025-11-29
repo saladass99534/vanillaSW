@@ -137,6 +137,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [showCCMenu, setShowCCMenu] = useState(false);
   const [ccSize, setCcSize] = useState<'small' | 'medium' | 'large'>('medium');
   const [subtitleUrl, setSubtitleUrl] = useState<string | null>(null);
+  
+  // --- ADDED: State for Subtitle Overlay ---
+  const [currentSubtitleText, setCurrentSubtitleText] = useState('');
 
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [audioSource, setAudioSource] = useState<string>('system'); 
@@ -174,6 +177,36 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   useEffect(() => {
       broadcast({ type: 'cc_size', payload: ccSize });
   }, [ccSize]);
+
+  // --- ADDED: Effect to sync subtitles from hidden player to overlay ---
+  useEffect(() => {
+    const video = fileVideoRef.current;
+    if (!video || !subtitleUrl) return;
+
+    const timer = setTimeout(() => {
+        if (video.textTracks && video.textTracks.length > 0) {
+            for (let i = 0; i < video.textTracks.length; i++) {
+                const track = video.textTracks[i];
+                if (track.mode === 'showing' || track.kind === 'subtitles') {
+                    track.mode = 'hidden'; 
+                    track.oncuechange = () => {
+                        const activeCues = track.activeCues;
+                        if (activeCues && activeCues.length > 0) {
+                            // @ts-ignore
+                            const rawText = activeCues[0].text;
+                            const cleanText = rawText.replace(/<[^>]*>/g, ''); 
+                            setCurrentSubtitleText(cleanText);
+                        } else {
+                            setCurrentSubtitleText('');
+                        }
+                    };
+                }
+            }
+        }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [subtitleUrl]);
+  // --------------------------------------------------------------------
 
   useEffect(() => {
     if (electronAvailable) window.electron.setWindowOpacity(browserFix ? 0.999 : 1.0);
@@ -704,6 +737,23 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 autoPlay 
                 playsInline 
             />
+            
+            {/* ADDED: Custom Subtitle Overlay */}
+            {currentSubtitleText && isSharing && (
+                <div className="absolute bottom-24 left-0 right-0 flex justify-center pointer-events-none z-30 px-8">
+                    <span 
+                        className="bg-black/60 text-white rounded-md px-3 py-1 text-center backdrop-blur-sm"
+                        style={{
+                            fontSize: ccSize === 'small' ? '1rem' : ccSize === 'medium' ? '1.5rem' : '2.25rem',
+                            textShadow: '0 2px 4px rgba(0,0,0,0.8)',
+                            fontFamily: 'sans-serif',
+                            maxWidth: '80%'
+                        }}
+                    >
+                        {currentSubtitleText}
+                    </span>
+                </div>
+            )}
 
             {showNerdStats && (
                 <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-lg z-30 text-[10px] font-mono text-gray-300 pointer-events-none select-none animate-in slide-in-from-left-2">
