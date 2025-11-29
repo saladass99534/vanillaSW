@@ -1,10 +1,32 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, dialog } = require('electron'); 
+const { app, BrowserWindow, ipcMain, desktopCapturer, dialog, powerSaveBlocker } = require('electron'); 
 const path = require('path');
 const { exec } = require('child_process');
 const WebSocket = require('ws');
 const express = require('express');
 const http = require('http');
-const fs = require('fs'); // <--- ADDED: Required for reading subtitle files
+const fs = require('fs'); 
+
+// --- CRITICAL VIDEO FIXES ---
+
+// 1. RE-ENABLE GPU (So your PC can actually decode the HEVC file)
+// We removed app.disableHardwareAcceleration() because it broke your local playback.
+
+// 2. FORCE "CAPTURE-FRIENDLY" RENDERING
+// These flags tell Windows: "Use the GPU to play the video, but don't use the 
+// invisible overlay. Draw the pixels where the screen recorder can see them."
+app.commandLine.appendSwitch('disable-direct-composition');
+app.commandLine.appendSwitch('disable-gpu-compositing');
+app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,MediaFoundationClearPlayback');
+
+// 3. PREVENT THROTTLING (Keep stream smooth in background)
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('force-color-profile', 'srgb'); // Helps with color accuracy on capture
+
+// 4. PREVENT SLEEP
+const powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+
+// ----------------------------------
 
 let mainWindow;
 let wss; 
@@ -45,14 +67,15 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    fullscreen: true, // Standard fullscreen (No Kiosk mode as requested)
-    show: false,       
+    fullscreen: true,
+    show: false,        
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, 
-      webSecurity: false 
+      webSecurity: false,
+      backgroundThrottling: false 
     },
     autoHideMenuBar: true,
     backgroundColor: '#000000',
@@ -72,7 +95,7 @@ function createWindow() {
   }
 }
 
-// ENABLE MACOS SYSTEM AUDIO LOOPBACK (For Screen Sharing)
+// ENABLE MACOS SYSTEM AUDIO LOOPBACK
 if (process.platform === 'darwin') {
     app.commandLine.appendSwitch('enable-features', 'MacLoopbackAudioForScreenShare,MacSckSystemAudioLoopbackOverride');
 }
@@ -86,6 +109,9 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', function () {
+  if (powerSaveBlocker.isStarted(powerBlockerId)) {
+    powerSaveBlocker.stop(powerBlockerId);
+  }
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -107,7 +133,6 @@ ipcMain.on('set-window-opacity', (event, opacity) => {
 
 // --- FILE PICKER HANDLERS ---
 
-// Video File Picker
 ipcMain.handle('open-video-file', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openFile'],
@@ -120,7 +145,6 @@ ipcMain.handle('open-video-file', async () => {
   }
 });
 
-// Subtitle File Picker (UPDATED TO READ CONTENT)
 ipcMain.handle('open-subtitle-file', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openFile'],
@@ -133,7 +157,6 @@ ipcMain.handle('open-subtitle-file', async () => {
 
   const filePath = filePaths[0];
   try {
-    // Read the file content directly so we can send it to the frontend/viewers
     const content = fs.readFileSync(filePath, 'utf-8');
     return { path: filePath, content: content };
   } catch (e) {
@@ -141,7 +164,6 @@ ipcMain.handle('open-subtitle-file', async () => {
     return null;
   }
 });
-// --------------------------------
 
 ipcMain.handle('get-tailscale-status', async () => {
   return new Promise((resolve, reject) => {
