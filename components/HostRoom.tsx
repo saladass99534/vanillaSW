@@ -335,6 +335,13 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       setShowCCMenu(false); 
   }; 
 
+  const removeSubtitle = () => {
+      setSubtitleUrl(null);
+      setCurrentSubtitleText('');
+      broadcast({ type: 'subtitle_update', payload: '' });
+      setShowCCMenu(false);
+  };
+
   const formatTime = (time: number) => { 
       if (!isFinite(time) || isNaN(time)) return "0:00"; 
       const hours = Math.floor(time / 3600); 
@@ -553,7 +560,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       setFileStreamUrl(null); 
       setSelectedSourceId(null); 
       setSourceTab('screen');  
-      setSubtitleUrl(null);  
+      setSubtitleUrl(null); 
+      setCurrentSubtitleText(''); // Added: Clear text locally
+      broadcast({ type: 'subtitle_update', payload: '' }); // Added: Broadcast clear to viewers
       setMovieTitle("");  
       setIsSharing(false); 
       lastStatsRef.current = null; 
@@ -737,9 +746,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{localVolume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={localVolume} onChange={(e) => setLocalVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div> 
                         <div className="w-px h-6 bg-white/10"></div> 
                         {audioSource === 'file' && (<button onClick={toggleFilePlay} className="p-2 hover:bg-white/10 rounded-full text-white transition-colors">{isPlayingFile ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>)} 
-                        {audioSource === 'file' && (<div className="relative"><button onClick={() => setShowCCMenu(!showCCMenu)} className={`p-2 rounded-full transition-colors ${subtitleUrl ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}><Captions size={20} /></button>{showCCMenu && (<div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-48 bg-[#151618] border border-white/10 rounded-xl p-3 shadow-2xl animate-in slide-in-from-bottom-2"><div className="flex flex-col gap-2"><button onClick={loadSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left"><Plus size={14} className="text-blue-400"/> Add Subs (.vtt/.srt)</button>{subtitleUrl && (<><div className="h-px bg-white/10 my-1"></div><div className="flex justify-between bg-black/30 rounded p-1"><button onClick={() => setCcSize('small')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'small' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>S</button><button onClick={() => setCcSize('medium')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'medium' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>M</button><button onClick={() => setCcSize('large')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'large' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>L</button></div></>)}</div></div>)}</div>)} 
+                        {audioSource === 'file' && (<div className="relative"><button onClick={() => setShowCCMenu(!showCCMenu)} className={`p-2 rounded-full transition-colors ${subtitleUrl ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}><Captions size={20} /></button>{showCCMenu && (<div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-48 bg-[#151618] border border-white/10 rounded-xl p-3 shadow-2xl animate-in slide-in-from-bottom-2"><div className="flex flex-col gap-2"><button onClick={loadSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left"><Plus size={14} className="text-blue-400"/> Add Subs (.vtt/.srt)</button>{subtitleUrl && (<><button onClick={removeSubtitle} className="flex items-center gap-2 w-full p-2 rounded hover:bg-white/10 text-xs text-left text-red-400"><Trash2 size={14} /> Remove Subtitles</button><div className="h-px bg-white/10 my-1"></div><div className="flex justify-between bg-black/30 rounded p-1"><button onClick={() => setCcSize('small')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'small' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>S</button><button onClick={() => setCcSize('medium')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'medium' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>M</button><button onClick={() => setCcSize('large')} className={`flex-1 py-1 text-[10px] rounded ${ccSize === 'large' ? 'bg-white/20 text-white' : 'text-gray-400'}`}>L</button></div></>)}</div></div>)}</div>)} 
                         
-                        {/* --- SEEKBAR INTEGRATED INTO CONTROLS (HOST) --- */}
                         {isSharing && audioSource === 'file' && (
                             <>
                                 <div className="w-px h-6 bg-white/10 mx-2"></div>
@@ -750,7 +758,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                 </div>
                             </>
                         )}
-                        {/* ----------------------------------------------- */}
 
                         <div className="w-px h-6 bg-white/10 mx-2"></div>
                         <div className="flex items-center gap-2"> 
