@@ -3,7 +3,7 @@ import SimplePeer from 'simple-peer';
 import { Button } from './Button';
 import { Chat, ChatHandle } from './Chat';
 import { ChatMessage, generateRandomName, Member, ReplyContext, StreamStats, FloatingEmoji } from '../types';
-import { Wifi, Tv, Users, Crown, X, Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, AlertCircle, Activity, Minimize, PictureInPicture, Clapperboard, FileVideo } from 'lucide-react';
+import { Wifi, Tv, Users, Crown, X, Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, AlertCircle, Activity, Minimize, PictureInPicture, Clapperboard, FileVideo, Eye, EyeOff } from 'lucide-react';
 
 interface ViewerRoomProps {
   onBack: () => void;
@@ -112,6 +112,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   // Mobile Detection & Viewport
   const [isMobile, setIsMobile] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
+  const [areControlsHidden, setAreControlsHidden] = useState(false);
 
   // Audio State
   const [volume, setVolume] = useState(1); // Default to 100%
@@ -674,7 +675,22 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 >
                     {showExitConfirm && ( <div className="absolute inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"><div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full"><h3 className="text-lg font-bold">Leave Party?</h3><p className="text-sm text-gray-400 my-4">You will be disconnected.</p><div className="flex gap-3 justify-end"><Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button><Button variant="danger" onClick={onBack}>Leave</Button></div></div></div> )}
                     
-                    <div className={`absolute top-0 right-0 z-20 p-4 transition-opacity ${controlsVisible ? 'opacity-100' : 'opacity-0'}`} onClick={(e) => e.stopPropagation()}><Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">Leave</Button></div>
+                    <div className="absolute top-0 right-0 z-20 p-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <div className={`transition-opacity duration-300 ${controlsVisible && !areControlsHidden ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                            <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="rounded-full px-4">
+                                Leave
+                            </Button>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setAreControlsHidden(prev => !prev)}
+                            className="rounded-full !p-2 backdrop-blur-md bg-black/40 border border-white/10"
+                            title={areControlsHidden ? 'Show Controls' : 'Hide Controls'}
+                        >
+                            {areControlsHidden ? <Eye size={16} /> : <EyeOff size={16} />}
+                        </Button>
+                    </div>
                     
                     {/* Hype Emojis */}
                     <div className="absolute inset-0 overflow-hidden pointer-events-none z-40"> 
@@ -734,7 +750,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                                 onPickerAction={handlePickerAction} 
                                 myId={myUserId} 
                                 isOverlay={true} 
-                                inputVisible={controlsVisible} 
+                                inputVisible={controlsVisible && !areControlsHidden} 
                                 onInputFocus={() => setIsInputFocused(true)} 
                                 onInputBlur={() => setIsInputFocused(false)} 
                                 onInputChange={resetInputIdleTimer} 
@@ -744,7 +760,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     )}
 
                     {/* Controls */}
-                    <div onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                    <div onClick={(e) => e.stopPropagation()} className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all ${controlsVisible && !areControlsHidden ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-xl border border-white/10">
                             <button onClick={togglePlay} className="p-2 text-white">{isPlaying ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor"/>}</button>
                             <button onClick={toggleMute} className="p-2">{volume === 0 ? <VolumeX size={18} className="text-red-400"/> : <Volume2 size={18} className="text-white"/>}</button>
