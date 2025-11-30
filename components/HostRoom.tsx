@@ -778,7 +778,21 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                     <div className="space-y-4"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Resolution</label><div className="flex bg-black/50 rounded-lg p-1 border border-white/10">{(['1080p', '1440p', '4k'] as const).map(q => (<button key={q} onClick={() => setStreamQuality(q)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${streamQuality === q ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}>{q.toUpperCase()}</button>))}</div></div><div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Frame Rate</label><select value={streamFps} onChange={(e) => setStreamFps(Number(e.target.value) as 30 | 60)} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value={30}>30 FPS</option><option value={60}>60 FPS (Silky Smooth)</option></select></div><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Bitrate</label><select value={streamBitrate} onChange={(e) => setStreamBitrate(Number(e.target.value))} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value={0}>Automatic (Default)</option><option value={15000}>High (15 Mbps)</option><option value={30000}>Extreme (30 Mbps)</option><option value={50000}>Insane (50 Mbps)</option></select></div></div></div>  
                                 </div>  
                             )}  
-                            <div className="flex justify-end gap-3"><Button variant="ghost" onClick={() => setShowSourceSelector(false)}>Cancel</Button><Button disabled={!selectedSourceId} onClick={() => selectedSourceId && startStream(selectedSourceId)} className="px-8">{isSharing ? 'Switch Source' : 'Go Live'}</Button></div>  
+                            <div className="flex justify-end items-center gap-3">
+                                {sourceTab === 'file' && fileStreamUrl && (
+                                    <div className="flex items-center gap-2 mr-4">
+                                        <label className="text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Bitrate</label>
+                                        <select value={streamBitrate} onChange={(e) => setStreamBitrate(Number(e.target.value))} className="bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none w-48">
+                                            <option value={0}>Automatic (Default)</option>
+                                            <option value={15000}>High (15 Mbps)</option>
+                                            <option value={30000}>Extreme (30 Mbps)</option>
+                                            <option value={50000}>Insane (50 Mbps)</option>
+                                        </select>
+                                    </div>
+                                )}
+                                <Button variant="ghost" onClick={() => setShowSourceSelector(false)}>Cancel</Button>
+                                <Button disabled={!selectedSourceId} onClick={() => selectedSourceId && startStream(selectedSourceId)} className="px-8">{isSharing ? 'Switch Source' : 'Go Live'}</Button>
+                            </div>
                         </div>  
                     </div>  
                 </div>  
