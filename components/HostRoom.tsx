@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react'; 
 import SimplePeer from 'simple-peer'; 
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { toBlobURL } from '@ffmpeg/util';
 import {  
   Users, Copy, Check, Tv, Maximize, Minimize, Volume2, VolumeX, 
   ScreenShare, ScreenShareOff, Power, Crown, X, Smile, Image as ImageIcon, ArrowLeft, Zap, Send, 
   Monitor, AppWindow, AlertTriangle, AlertCircle, Wifi, HelpCircle, 
   Activity, RefreshCw, Globe, RotateCcw, Clapperboard, PictureInPicture, 
-  FileVideo, Trash2, Play, Pause, Captions, Plus, Pin, Loader2
+  FileVideo, Trash2, Play, Pause, Captions, Plus, Pin 
 } from 'lucide-react'; 
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { Button } from './Button'; 
 import { Chat, ChatHandle } from './Chat'; 
 import { ChatMessage, generateRandomName, Member, ReplyContext, DesktopSource, StreamStats, FloatingEmoji } from '../types'; 
@@ -111,12 +111,6 @@ const setVideoBitrate = (sdp: string, bitrate: number): string => {
     return sdpLines.join('\r\n');
 };
 
-const getFileExtension = (filename: string) => {
-  return filename.slice(((filename.lastIndexOf(".") - 1) >>> 0) + 2).toLowerCase();
-}
-
-const INCOMPATIBLE_EXTENSIONS = ['mkv', 'avi', 'mov', 'wmv', 'flv'];
-
 export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => { 
   const [isRoomStarted, setIsRoomStarted] = useState(false); 
   const [myIp, setMyIp] = useState(''); 
@@ -158,10 +152,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     
   const [fileStreamUrl, setFileStreamUrl] = useState<string | null>(null); 
   const fileVideoRef = useRef<HTMLVideoElement>(null);    
-  // FIX: Use 'any' for types missing from DOM definitions.
-  const audioContextRef = useRef<any | null>(null); 
-  // FIX: Use 'any' for types missing from DOM definitions.
-  const audioSourceNodeRef = useRef<any | null>(null); 
+  const audioContextRef = useRef<AudioContext | null>(null); 
+  const audioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null); 
 
   const [movieTitle, setMovieTitle] = useState<string>(""); 
 
@@ -174,8 +166,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   const [currentSubtitleText, setCurrentSubtitleText] = useState(''); 
 
-  // FIX: Use 'any' for types missing from DOM definitions.
-  const [audioInputDevices, setAudioInputDevices] = useState<any[]>([]); 
+  const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]); 
   const [audioSource, setAudioSource] = useState<string>('system');    
   const [streamQuality, setStreamQuality] = useState<'1080p' | '1440p' | '4k'>('1080p'); 
   const [streamFps, setStreamFps] = useState<30 | 60>(60); 
@@ -194,16 +185,16 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]); 
   const [members, setMembers] = useState<Member[]>([]); 
 
-  // --- FFmpeg States ---
+  // --- FFMPEG STATES ---
   const [isTranscoding, setIsTranscoding] = useState(false);
-  const [transcodingProgress, setTranscodingProgress] = useState(0);
-  const ffmpegRef = useRef<FFmpeg | null>(null);
+  const [transcodeProgress, setTranscodeProgress] = useState(0);
+  const ffmpegRef = useRef(new FFmpeg());
+  // ---------------------
 
   const peersRef = useRef<Map<string, SimplePeer.Instance>>(new Map()); 
   const videoRef = useRef<HTMLVideoElement>(null); 
   const ambilightRef = useRef<HTMLVideoElement>(null); 
-  // FIX: Use 'any' for types missing from DOM definitions.
-  const streamRef = useRef<any | null>(null); 
+  const streamRef = useRef<MediaStream | null>(null); 
   const containerRef = useRef<HTMLDivElement>(null); 
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); 
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); 
@@ -214,73 +205,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0; 
   const activeTheme = THEMES[currentTheme] || THEMES['default']; 
 
-  const loadFFmpeg = async () => {
-    if (ffmpegRef.current) return ffmpegRef.current;
-    
-    const ffmpeg = new FFmpeg();
-    ffmpeg.on('log', ({ message }) => {
-        // You can log messages here if needed for debugging
-        // console.log(message);
-    });
-    ffmpeg.on('progress', ({ progress }) => {
-        setTranscodingProgress(Math.round(progress * 100));
-    });
-
-    // FIX: Cast to any to resolve missing DOM types.
-    const baseURL = `${(window as any).location.origin}${(window as any).location.pathname}`.replace(/\/index\.html$/, '');
-    await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}ffmpeg-core.wasm`, 'application/wasm'),
-    });
-    
-    ffmpegRef.current = ffmpeg;
-    return ffmpeg;
-  };
-
-  const handleFileSelect = async () => {
-    if (!electronAvailable) return;
-    
-    const file = await window.electron.openVideoFile();
-    if (!file) return;
-
-    const extension = getFileExtension(file.path);
-
-    if (INCOMPATIBLE_EXTENSIONS.includes(extension)) {
-      setIsTranscoding(true);
-      setTranscodingProgress(0);
-      try {
-        const ffmpeg = await loadFFmpeg();
-        await ffmpeg.writeFile('input.' + extension, file.data);
-        
-        // Transcode to a widely compatible format: H.264 video, AAC audio, in an MP4 container
-        await ffmpeg.exec(['-i', 'input.' + extension, '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-movflags', 'frag_keyframe+empty_moov', 'output.mp4']);
-        
-        const data = await ffmpeg.readFile('output.mp4');
-        const blob = new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
-        const url = URL.createObjectURL(blob);
-        
-        setFileStreamUrl(url);
-        setMovieTitle(file.path.split(/[\\/]/).pop() || "Transcoded Video");
-        setSourceTab('file');
-        setSelectedSourceId('file');
-      } catch (error) {
-        console.error('Transcoding failed:', error);
-        // FIX: Cast to any to resolve missing DOM types.
-        (window as any).alert('Failed to process video file. It may be corrupted or in an unsupported format.');
-      } finally {
-        setIsTranscoding(false);
-      }
-    } else {
-      // It's a compatible format like MP4, create a Blob URL directly
-      const blob = new Blob([file.data.buffer], { type: 'video/mp4' });
-      const url = URL.createObjectURL(blob);
-      setFileStreamUrl(url);
-      setMovieTitle(file.path.split(/[\\/]/).pop() || "Video File");
-      setSourceTab('file');
-      setSelectedSourceId('file');
-    }
-  };
-
   useEffect(() => {  
       broadcast({ type: 'cc_size', payload: ccSize });  
   }, [ccSize]);  
@@ -290,12 +214,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     if (!video || !subtitleUrl) return; 
 
     const timer = setTimeout(() => { 
-        // FIX: Cast to any to resolve missing DOM types.
-        if ((video as any).textTracks && (video as any).textTracks.length > 0) { 
-            // FIX: Cast to any to resolve missing DOM types.
-            for (let i = 0; i < (video as any).textTracks.length; i++) { 
-                // FIX: Cast to any to resolve missing DOM types.
-                const track = (video as any).textTracks[i]; 
+        if (video.textTracks && video.textTracks.length > 0) { 
+            for (let i = 0; i < video.textTracks.length; i++) { 
+                const track = video.textTracks[i]; 
                 if (track.mode === 'showing' || track.kind === 'subtitles') { 
                     track.mode = 'hidden';  
                     track.oncuechange = () => { 
@@ -326,6 +247,58 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   useEffect(() => {  
       if (electronAvailable && isRoomStarted) window.electron.toggleWebServer(isWebStreamEnabled);  
   }, [isWebStreamEnabled, isRoomStarted, electronAvailable]);  
+
+  // --- FFMPEG TRANSCODING LOGIC ---
+  const transcodeAndPlay = async (filePath: string) => {
+    setIsTranscoding(true);
+    setTranscodeProgress(0);
+    try {
+        const ffmpeg = ffmpegRef.current;
+        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+        
+        if (!ffmpeg.loaded) {
+            await ffmpeg.load({
+                coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+                wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+            });
+        }
+
+        ffmpeg.on('progress', ({ progress }) => {
+            // progress is 0 to 1
+            setTranscodeProgress(Math.round(progress * 100));
+        });
+
+        // Write file (Using fetch to read local file via Electron's webSecurity: false)
+        await ffmpeg.writeFile('input.video', await fetchFile(`file://${filePath}`));
+
+        // Transcode to MP4 (h264/aac) - ultrafast for speed
+        await ffmpeg.exec([
+            '-i', 'input.video',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '22',
+            '-c:a', 'aac',
+            'output.mp4'
+        ]);
+
+        // Read output
+        const data = await ffmpeg.readFile('output.mp4');
+        const blob = new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+
+        setFileStreamUrl(url);
+        setMovieTitle(filePath.split(/[\\/]/).pop() || "Video");
+        setSourceTab('file');
+        setSelectedSourceId('file');
+
+    } catch (e) {
+        console.error("Transcode Error:", e);
+        alert("Failed to transcode/play video: " + e);
+    } finally {
+        setIsTranscoding(false);
+    }
+  };
+  // --------------------------------
 
   const startRoom = () => {  
     if (!electronAvailable) return;  
@@ -361,15 +334,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   useEffect(() => {  
     const handleFsChange = () => {  
-        // FIX: Cast to any to resolve missing DOM types.
-        const isFs = !!(window as any).document.fullscreenElement;  
+        const isFs = !!document.fullscreenElement;  
         setIsFullscreen(isFs);  
         if (!isFs) setIsTheaterMode(false);  
     };  
-    // FIX: Cast to any to resolve missing DOM types.
-    (window as any).document.addEventListener('fullscreenchange', handleFsChange);  
-    // FIX: Cast to any to resolve missing DOM types.
-    return () => { (window as any).document.removeEventListener('fullscreenchange', handleFsChange); performCleanup(); };  
+    document.addEventListener('fullscreenchange', handleFsChange);  
+    return () => { document.removeEventListener('fullscreenchange', handleFsChange); performCleanup(); };  
   }, []);  
 
   // --- IDENTICAL LOGIC FROM VIEWER ROOM ---
@@ -402,12 +372,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   };
 
   useEffect(() => {  
-    const handleKeyDown = (e: KeyboardEvent) => { // FIX: Cast to any to resolve missing DOM types.
-if ((e as any).key === 'Escape' && isTheaterMode) setIsTheaterMode(false); };  
-    // FIX: Cast to any to resolve missing DOM types.
-    (window as any).addEventListener('keydown', handleKeyDown);  
-    // FIX: Cast to any to resolve missing DOM types.
-    return () => (window as any).removeEventListener('keydown', handleKeyDown);  
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTheaterMode) setIsTheaterMode(false); };  
+    window.addEventListener('keydown', handleKeyDown);  
+    return () => window.removeEventListener('keydown', handleKeyDown);  
   }, [isTheaterMode]);  
 
   // Auto-wake chat (Identical to ViewerRoom)
@@ -415,19 +382,16 @@ if ((e as any).key === 'Escape' && isTheaterMode) setIsTheaterMode(false); };
       const handleGlobalKeyDown = (e: KeyboardEvent) => {  
           resetInputIdleTimer();  
           
-          // FIX: Cast to any to resolve missing DOM types.
           if ((isTheaterMode || isFullscreen) && !isInputFocused) {
-              if ((e as any).key.length === 1 && !(e as any).ctrlKey && !(e as any).metaKey && !(e as any).altKey) {
+              if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
                   setShowControls(true);
                   chatRef.current?.focusInput();
               }
           }
       };  
       
-      // FIX: Cast to any to resolve missing DOM types.
-      (window as any).addEventListener('keydown', handleGlobalKeyDown);  
-      // FIX: Cast to any to resolve missing DOM types.
-      return () => (window as any).removeEventListener('keydown', handleGlobalKeyDown);  
+      window.addEventListener('keydown', handleGlobalKeyDown);  
+      return () => window.removeEventListener('keydown', handleGlobalKeyDown);  
   }, [isTheaterMode, isFullscreen, isInputFocused]);  
 
   const handleHypeAction = (emoji: string) => {  
@@ -439,34 +403,26 @@ if ((e as any).key === 'Escape' && isTheaterMode) setIsTheaterMode(false); };
 
   const handleFileTimeUpdate = () => {  
       if (fileVideoRef.current) { 
-          // FIX: Cast to any to resolve missing DOM types.
-          setCurrentTime((fileVideoRef.current as any).currentTime); 
-          // FIX: Cast to any to resolve missing DOM types.
-          if ((fileVideoRef.current as any).duration) { 
-              // FIX: Cast to any to resolve missing DOM types.
-              broadcast({ type: 'duration_sync', payload: (fileVideoRef.current as any).duration }); 
+          setCurrentTime(fileVideoRef.current.currentTime); 
+          if (fileVideoRef.current.duration) { 
+              broadcast({ type: 'duration_sync', payload: fileVideoRef.current.duration }); 
           } 
       } 
   };  
 
   const handleFileSeek = (e: React.ChangeEvent<HTMLInputElement>) => {  
-      // FIX: Cast to any to resolve missing DOM types.
-      const time = parseFloat((e.target as any).value);  
+      const time = parseFloat(e.target.value);  
       setCurrentTime(time);  
-      // FIX: Cast to any to resolve missing DOM types.
-      if (fileVideoRef.current) (fileVideoRef.current as any).currentTime = time;  
+      if (fileVideoRef.current) fileVideoRef.current.currentTime = time;  
   };  
 
   const toggleFilePlay = () => {  
       if (fileVideoRef.current) {  
-          // FIX: Cast to any to resolve missing DOM types.
-          if ((fileVideoRef.current as any).paused) {  
-              // FIX: Cast to any to resolve missing DOM types.
-              (fileVideoRef.current as any).play();  
+          if (fileVideoRef.current.paused) {  
+              fileVideoRef.current.play();  
               setIsPlayingFile(true);  
           } else {  
-              // FIX: Cast to any to resolve missing DOM types.
-              (fileVideoRef.current as any).pause();  
+              fileVideoRef.current.pause();  
               setIsPlayingFile(false);  
           }  
       }  
@@ -488,8 +444,7 @@ if ((e as any).key === 'Escape' && isTheaterMode) setIsTheaterMode(false); };
               setSubtitleUrl(url);  
           } catch (e) {  
               console.error("Failed to process subtitles", e);  
-              // FIX: Cast to any to resolve missing DOM types.
-              (window as any).alert("Failed to load subtitle file.");  
+              alert("Failed to load subtitle file.");  
           }  
       }  
       setShowCCMenu(false);  
@@ -517,9 +472,8 @@ if ((e as any).key === 'Escape' && isTheaterMode) setIsTheaterMode(false); };
   useEffect(() => {  
       const fetchAudioDevices = async () => {  
           try {  
-              // FIX: Cast to any to resolve missing DOM types.
-              const devices = await (navigator as any).mediaDevices.enumerateDevices();  
-              setAudioInputDevices(devices.filter((d: any) => d.kind === 'audioinput'));  
+              const devices = await navigator.mediaDevices.enumerateDevices();  
+              setAudioInputDevices(devices.filter(d => d.kind === 'audioinput'));  
           } catch (e) { console.error(e); }  
       };  
       fetchAudioDevices();  
@@ -534,8 +488,7 @@ if ((e as any).key === 'Escape' && isTheaterMode) setIsTheaterMode(false); };
   useEffect(() => {  
     if (!electronAvailable) return;  
 
-    window.electron.onHostServerStarted((res: any) => { // FIX: Cast to any to resolve missing DOM types.
-if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false); setMembers([{ id: 'HOST', name: username, isHost: true }]); } else { (window as any).alert("Failed to start server: " + res.error); setIsInitializing(false); } });  
+    window.electron.onHostServerStarted((res: any) => { if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false); setMembers([{ id: 'HOST', name: username, isHost: true }]); } else { alert("Failed to start server: " + res.error); setIsInitializing(false); } });  
     window.electron.onHostClientConnected(({ socketId }: any) => {  
         const p = new SimplePeer({ initiator: true, trickle: false, stream: streamRef.current || undefined });  
 
@@ -585,8 +538,7 @@ if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false);
                                       }  
                                   }  
                                   lastStatsRef.current = { timestamp: report.timestamp, bytesSent: report.bytesSent };  
-                                  // FIX: Cast to any to resolve missing DOM types.
-                                  setStats(prev => ({ ...prev, resolution: `${(videoRef.current as any)?.videoWidth}x${(videoRef.current as any)?.videoHeight}`, fps: report.framesPerSecond || 0 }));  
+                                  setStats(prev => ({ ...prev, resolution: `${videoRef.current?.videoWidth}x${videoRef.current?.videoHeight}`, fps: report.framesPerSecond || 0 }));  
                               }  
                           }  
                           if (report.type === 'candidate-pair' && report.state === 'succeeded') {  
@@ -605,15 +557,12 @@ if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false);
 
   // --- AUDIO MONITORING FIX: PREVIEW VOLUME ---
   useEffect(() => {  
-      // FIX: Cast to any to resolve missing DOM types.
-      if (fileVideoRef.current) (fileVideoRef.current as any).volume = 1.0;  
+      if (fileVideoRef.current) fileVideoRef.current.volume = 1.0;  
        
       // Control preview volume for ALL modes (Screen, File, or VB-Cable)
       if (videoRef.current) {  
-          // FIX: Cast to any to resolve missing DOM types.
-          (videoRef.current as any).volume = localVolume;  
-          // FIX: Cast to any to resolve missing DOM types.
-          (videoRef.current as any).muted = (localVolume === 0);  
+          videoRef.current.volume = localVolume;  
+          videoRef.current.muted = (localVolume === 0);  
       }  
   }, [localVolume, sourceTab]);  
   // ------------------------------------------
@@ -658,7 +607,7 @@ if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false);
   const startStream = async (sourceId: string) => {  
       setShowSourceSelector(false);  
       try {  
-          let finalStream: any;  
+          let finalStream: MediaStream;  
           let maxWidth = streamQuality === '4k' ? 3840 : (streamQuality === '1440p' ? 2560 : 1920);  
           let maxHeight = streamQuality === '4k' ? 2160 : (streamQuality === '1440p' ? 1440 : 1080);  
 
@@ -667,16 +616,12 @@ if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false);
           };  
 
           if (sourceId === 'file') {  
-              // FIX: Cast to any to resolve missing DOM types.
-              if (!fileVideoRef.current || !fileStreamUrl) { (window as any).alert("No file selected!"); return; }  
-              // FIX: Cast to any to resolve missing DOM types.
-              (fileVideoRef.current as any).volume = 1.0;   
-              // FIX: Cast to any to resolve missing DOM types.
-              (fileVideoRef.current as any).muted = false;  
+              if (!fileVideoRef.current || !fileStreamUrl) { alert("No file selected!"); return; }  
+              fileVideoRef.current.volume = 1.0;   
+              fileVideoRef.current.muted = false;  
 
               if (!audioContextRef.current) {  
-                  // FIX: Cast to any to resolve missing DOM types.
-                  const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;  
+                  const AudioContext = window.AudioContext || (window as any).webkitAudioContext;  
                   audioContextRef.current = new AudioContext();  
               }  
               const ctx = audioContextRef.current;  
@@ -685,15 +630,13 @@ if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false);
               const destination = ctx.createMediaStreamDestination();  
               sourceNode.connect(destination);   
 
-              // FIX: Cast to any to resolve missing DOM types.
-              try { await (fileVideoRef.current as any).play(); setIsPlayingFile(true); } catch (playErr) { console.warn(playErr); }  
+              try { await fileVideoRef.current.play(); setIsPlayingFile(true); } catch (playErr) { console.warn(playErr); }  
 
               // @ts-ignore  
               const videoStream = fileVideoRef.current.captureStream(60);   
-              if (videoStream.getTracks().length === 0) throw new Error("Failed to capture stream from video element.");  
+              if (videoStream.getTracks().length === 0) throw new Error("Failed to capture stream.");  
 
-              // FIX: Cast to any to resolve missing DOM types for constructor.
-              finalStream = new (window as any).MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);  
+              finalStream = new MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);  
               setAudioSource('file');   
               setLocalVolume(0.5); 
               
@@ -704,31 +647,26 @@ if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false);
               }
           }  
           else if (audioSource === 'none') {  
-              // FIX: Cast to any to resolve missing DOM types.
-              finalStream = await (navigator as any).mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);  
+              finalStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);  
           } else if (audioSource === 'system') {  
-              // FIX: Cast to any to resolve missing DOM types.
-              finalStream = await (navigator as any).mediaDevices.getUserMedia({  
+              finalStream = await navigator.mediaDevices.getUserMedia({  
                   audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },  
                   video: videoConstraints  
               } as any);  
               // Removed setLocalVolume(0) here to allow monitoring 
           } else {  
               // --- AUDIO SYNC FIX FOR VB-CABLE / EXTERNAL MIC --- 
-              // FIX: Cast to any to resolve missing DOM types.
-              const videoStream = await (navigator as any).mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);  
+              const videoStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);  
               try {  
                   // 1. Get raw audio with relaxed latency (removed latency: 0) 
-                  // FIX: Cast to any to resolve missing DOM types.
-                  const audioStream = await (navigator as any).mediaDevices.getUserMedia({  
+                  const audioStream = await navigator.mediaDevices.getUserMedia({  
                       audio: { deviceId: { exact: audioSource }, autoGainControl: false, echoCancellation: false, noiseSuppression: false, channelCount: 2 } as any,  
                       video: false  
                   });  
 
                   // 2. Route through AudioContext to align clocks with the system 
                   if (!audioContextRef.current) {  
-                      // FIX: Cast to any to resolve missing DOM types.
-                      const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;  
+                      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;  
                       audioContextRef.current = new AudioContext();  
                   } 
                   const ctx = audioContextRef.current;  
@@ -737,8 +675,7 @@ if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false);
                   source.connect(destination);  
 
                   // 3. Combine processed audio with video 
-                  // FIX: Cast to any to resolve missing DOM types for constructor.
-                  finalStream = new (window as any).MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);  
+                  finalStream = new MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);  
               } catch (audioErr) { console.error(audioErr); finalStream = videoStream; }  
               // -------------------------------------------------- 
           }  
@@ -749,16 +686,12 @@ if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false);
           // This fixes the "too much compression" issue on desktop browsers.
 
           if (videoRef.current) {  
-              // FIX: Cast to any to resolve missing DOM types.
-              (videoRef.current as any).srcObject = finalStream;  
-              // FIX: Cast to any to resolve missing DOM types.
-              (videoRef.current as any).play().catch((e: any) => console.error("Preview Play Error", e));  
+              videoRef.current.srcObject = finalStream;  
+              videoRef.current.play().catch(e => console.error("Preview Play Error", e));  
           }  
           if (ambilightRef.current) {  
-              // FIX: Cast to any to resolve missing DOM types.
-              (ambilightRef.current as any).srcObject = finalStream;  
-              // FIX: Cast to any to resolve missing DOM types.
-              (ambilightRef.current as any).play().catch(() => {});  
+              ambilightRef.current.srcObject = finalStream;  
+              ambilightRef.current.play().catch(() => {});  
           }  
           broadcast({ type: 'bitrate_sync', payload: streamBitrate });  
           setIsSharing(true);  
@@ -766,29 +699,19 @@ if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false);
             
           broadcast({ type: 'metadata', payload: { title: movieTitle } }); 
 
-      } catch (e) { console.error(e); // FIX: Cast to any to resolve missing DOM types.
-(window as any).alert("Failed to start stream: " + e); }  
+      } catch (e) { console.error(e); alert("Failed to start stream: " + e); }  
   };  
 
   const stopSharing = () => {  
       broadcast({ type: 'stream_stopped' });  
-      // FIX: Cast to any to resolve missing DOM types.
-      if (streamRef.current) { (streamRef.current as any).getTracks().forEach((t: any) => t.stop()); peersRef.current.forEach(p => p.removeStream(streamRef.current!)); streamRef.current = null; }  
-      // FIX: Cast to any to resolve missing DOM types.
-      if (videoRef.current) (videoRef.current as any).srcObject = null;  
-      // FIX: Cast to any to resolve missing DOM types.
-      if (ambilightRef.current) (ambilightRef.current as any).srcObject = null;  
+      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); peersRef.current.forEach(p => p.removeStream(streamRef.current!)); streamRef.current = null; }  
+      if (videoRef.current) videoRef.current.srcObject = null;  
+      if (ambilightRef.current) ambilightRef.current.srcObject = null;  
         
       if (fileVideoRef.current) {  
-          // FIX: Cast to any to resolve missing DOM types.
-          (fileVideoRef.current as any).pause();  
-          if (fileStreamUrl && fileStreamUrl.startsWith('blob:')) {
-            URL.revokeObjectURL(fileStreamUrl);
-          }
-          // FIX: Cast to any to resolve missing DOM types.
-          (fileVideoRef.current as any).src = "";   
-          // FIX: Cast to any to resolve missing DOM types.
-          (fileVideoRef.current as any).load();      
+          fileVideoRef.current.pause();  
+          fileVideoRef.current.src = "";   
+          fileVideoRef.current.load();      
           setIsPlayingFile(false);  
       }  
       setFileStreamUrl(null);  
@@ -803,12 +726,9 @@ if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false);
   };  
 
   const toggleMute = () => { if (localVolume > 0) setLocalVolume(0); else setLocalVolume(0.5); };  
-  const toggleFullscreen = () => { const elem = containerRef.current; // FIX: Cast to any to resolve missing DOM types.
-if (!(window as any).document.fullscreenElement) (elem as any)?.requestFullscreen().catch(console.error); else (window as any).document.exitFullscreen(); };  
-  const toggleTheaterMode = () => { // FIX: Cast to any to resolve missing DOM types.
-if (isFullscreen) (window as any).document.exitFullscreen(); else setIsTheaterMode(!isTheaterMode); };  
-  const togglePiP = async () => { try { // FIX: Cast to any to resolve missing DOM types.
-if ((window as any).document.pictureInPictureElement) await (window as any).document.exitPictureInPicture(); else if (videoRef.current && videoRef.current !== (window as any).document.pictureInPictureElement) await (videoRef.current as any).requestPictureInPicture(); } catch (err) { console.error(err); } };  
+  const toggleFullscreen = () => { const elem = containerRef.current; if (!document.fullscreenElement) elem?.requestFullscreen().catch(console.error); else document.exitFullscreen(); };  
+  const toggleTheaterMode = () => { if (isFullscreen) document.exitFullscreen(); else setIsTheaterMode(!isTheaterMode); };  
+  const togglePiP = async () => { try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else if (videoRef.current && videoRef.current !== document.pictureInPictureElement) await videoRef.current.requestPictureInPicture(); } catch (err) { console.error(err); } };  
   const startSharedPicker = () => { if (pickerStepRef.current !== 'idle' && pickerStepRef.current !== 'reveal') return; setPickerStep('type'); pickerStepRef.current = 'type'; const msg: ChatMessage = { id: Date.now().toString(), senderId: 'HOST', senderName: 'SYSTEM', text: '', timestamp: Date.now(), isSystemEvent: true, eventPayload: { state: 'type_selection' } }; setMessages(p => [...p, msg]); broadcast({ type: 'chat', payload: msg }); };  
   const handlePickerInteraction = (action: string, value?: string) => { if (action === 'start_picker') { startSharedPicker(); return; } const msgId = Date.now().toString(); let payload: any = {}; const currentStep = pickerStepRef.current; const currentMediaType = activeMediaTypeRef.current; const seen = seenTitlesRef.current; if (action === 'select_type') { if (currentStep !== 'type') return; const type = value as MediaType; setActiveMediaType(type); activeMediaTypeRef.current = type; setPickerStep('genre'); pickerStepRef.current = 'genre'; payload = { state: 'genre_selection', mediaType: type }; } else if (action === 'select_genre' || action === 'reroll') { if (currentStep !== 'genre' && action !== 'reroll') return; const genre = value as Genre; if(action !== 'reroll') { setCurrentTheme(genre); broadcast({ type: 'theme_change', payload: genre }); } setPickerStep('reveal'); pickerStepRef.current = 'reveal'; const database = currentMediaType === 'Movie' ? MOVIE_DB : SHOW_DB; const allOptions = database[genre] || []; let available = allOptions.filter(m => !seen.has(m.title)); if (available.length < 3) available = allOptions; const picks = [...available].sort(() => 0.5 - Math.random()).slice(0, 3); setSeenTitles(prev => { const next = new Set(prev); picks.forEach(p => next.add(p.title)); return next; }); payload = { state: 'reveal', mediaType: currentMediaType, genre, movies: picks }; } const msg: ChatMessage = { id: msgId, senderId: 'HOST', senderName: 'SYSTEM', text: '', timestamp: Date.now(), isSystemEvent: true, eventPayload: payload }; setMessages(p => [...p, msg]); broadcast({ type: 'chat', payload: msg }); };  
   const handleSendMessage = (text: string, type: 'text' | 'gif' = 'text', replyTo?: ReplyContext) => { const msg: ChatMessage = { id: Date.now().toString() + Math.floor(Math.random() * 1000), senderId: 'HOST', senderName: username, text, timestamp: Date.now(), type, replyTo, reactions: {} }; setMessages(p => { if (p.some(m => m.id === msg.id)) return p; return [...p, msg]; }); broadcast({ type: 'chat', payload: msg }); };  
@@ -839,24 +759,11 @@ if ((window as any).document.pictureInPictureElement) await (window as any).docu
 
   return (  
     <div className="flex h-screen bg-[#111] text-gray-100 overflow-hidden font-sans">  
-      {isTranscoding && (
-        <div className="absolute inset-0 z-[101] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center">
-                <Loader2 className="w-12 h-12 text-blue-400 mx-auto mb-4 animate-spin" />
-                <h3 className="text-lg font-bold">Preparing Video...</h3>
-                <p className="text-gray-400 text-sm mt-2 mb-4">This may take a moment for larger files.</p>
-                <div className="w-full bg-black/50 rounded-full h-2.5 border border-white/10">
-                    <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${transcodingProgress}%` }}></div>
-                </div>
-                <p className="text-xs font-mono mt-2 text-blue-300">{transcodingProgress}%</p>
-            </div>
-        </div>
-      )}
       <div className="flex-1 flex flex-col relative min-w-0">  
         <div ref={containerRef} className="flex-1 relative bg-black flex items-center justify-center overflow-hidden group select-none"  
             onMouseMove={handleMouseMove} onClick={() => setShowControls(!showControls)} onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout}>  
               
-            <video ref={fileVideoRef} src={fileStreamUrl || ''} className="absolute top-0 left-0 w-full h-full -z-50 opacity-100 pointer-events-none" style={{ visibility: 'visible' }} playsInline crossOrigin="anonymous" onTimeUpdate={handleFileTimeUpdate} onLoadedMetadata={() => fileVideoRef.current && setDuration((fileVideoRef.current as any).duration)}>  
+            <video ref={fileVideoRef} src={fileStreamUrl || ''} className="absolute top-0 left-0 w-full h-full -z-50 opacity-100 pointer-events-none" style={{ visibility: 'visible' }} playsInline crossOrigin="anonymous" onTimeUpdate={handleFileTimeUpdate} onLoadedMetadata={() => fileVideoRef.current && setDuration(fileVideoRef.current.duration)}>  
                 {subtitleUrl && <track key={subtitleUrl} label="English" kind="subtitles" src={subtitleUrl} default />}  
             </video>  
 
@@ -872,7 +779,7 @@ if ((window as any).document.pictureInPictureElement) await (window as any).docu
                 <div className="pointer-events-auto flex items-center gap-4">  
                    <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg">  
                        <Wifi size={14} className={myIp ? "text-green-400" : "text-gray-500"} />  
-                       <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => (navigator as any).clipboard.writeText(myIp ? `${myIp}:8080` : '')} title="Click to Copy IP">{myIp ? `${myIp}:8080` : "Detecting IP..."}</span>  
+                       <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(myIp ? `${myIp}:8080` : '')} title="Click to Copy IP">{myIp ? `${myIp}:8080` : "Detecting IP..."}</span>  
                    </div>  
                    <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600"><Power size={14} /> End</Button>  
                 </div>  
@@ -898,14 +805,28 @@ if ((window as any).document.pictureInPictureElement) await (window as any).docu
                         <div className="flex gap-4 px-6 py-4 border-b border-white/5">  
                             <button onClick={() => setSourceTab('screen')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'screen' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>Screens</button>  
                             <button onClick={() => setSourceTab('window')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'window' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>Windows</button>  
-                            <button onClick={() => { if (!fileStreamUrl) { handleFileSelect(); } else { setSourceTab('file'); } }} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'file' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}><div className="flex items-center gap-2"><FileVideo size={16} /> Video File</div></button>  
+                            <button onClick={async () => { if (!fileStreamUrl) { const filePath = await window.electron.openVideoFile(); if (filePath) { transcodeAndPlay(filePath); } } else { setSourceTab('file'); } }} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'file' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}><div className="flex items-center gap-2"><FileVideo size={16} /> Video File</div></button>  
                             <div className="ml-auto flex items-center gap-2"><button onClick={prepareScreenShare} className={`p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all ${isRefreshingSources ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button></div>  
                         </div>  
                         {isMac && sourceTab === 'window' && audioSource === 'system' && (<div className="mx-6 mt-4 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg flex items-center gap-3 animate-in slide-in-from-top-2"><AlertTriangle className="text-orange-500 shrink-0" size={20} /><p className="text-xs text-orange-200"><span className="font-bold block text-orange-400 mb-0.5">Audio Limitation Detected</span>macOS cannot record audio from individual windows. Please use <b>Screens</b> or <b>Video File</b> mode.</p></div>)}  
                         <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">  
                             {sourceTab === 'file' ? (  
                                 <div className="flex flex-col items-center justify-center h-full text-center">  
-                                    {fileStreamUrl ? (  
+                                    {isTranscoding ? (
+                                        <div className="flex flex-col items-center justify-center w-full">
+                                            <div className="mb-4 relative">
+                                                <div className="w-16 h-16 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin"></div>
+                                                <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-purple-400">
+                                                    {transcodeProgress}%
+                                                </div>
+                                            </div>
+                                            <h3 className="text-xl font-bold text-white mb-2">Optimizing Video...</h3>
+                                            <p className="text-gray-400 text-sm max-w-md">Converting video format for compatibility. Larger files may take a moment.</p>
+                                            <div className="w-full max-w-md bg-white/10 rounded-full h-1 mt-6 overflow-hidden">
+                                                <div className="bg-purple-500 h-full transition-all duration-300 ease-out" style={{ width: `${transcodeProgress}%` }}></div>
+                                            </div>
+                                        </div>
+                                    ) : fileStreamUrl ? (  
                                         <div className="w-full max-w-lg relative group">  
                                             <div className="aspect-video bg-black rounded-xl overflow-hidden border-2 border-purple-500 shadow-[0_0_30px_rgba(168,85,247,0.3)] mb-4">  
                                                 <video src={fileStreamUrl} className="w-full h-full object-contain" controls />  
@@ -915,7 +836,7 @@ if ((window as any).document.pictureInPictureElement) await (window as any).docu
                                             <p className="text-gray-500 text-xs mt-1">Audio will be captured directly from file.</p>  
                                         </div>  
                                     ) : (  
-                                        <div className="text-center"><p className="text-gray-500 mb-4">Select a local video file for perfect quality.</p><Button onClick={handleFileSelect}>Choose File</Button></div>  
+                                        <div className="text-center"><p className="text-gray-500 mb-4">Select a local video file for perfect quality.</p><Button onClick={async () => { const filePath = await window.electron.openVideoFile(); if (filePath) { transcodeAndPlay(filePath); } }}>Choose File</Button></div>  
                                     )}  
                                 </div>  
                             ) : sourceTab === 'screen' ? (  
@@ -927,15 +848,15 @@ if ((window as any).document.pictureInPictureElement) await (window as any).docu
                         <div className="p-6 border-t border-white/10 bg-[#151618] rounded-b-2xl">  
                             {sourceTab !== 'file' && (  
                                 <div className="grid grid-cols-2 gap-6 mb-6">  
-                                    <div className="space-y-4"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block flex items-center gap-2">Audio Source <button onClick={() => setShowAudioHelp(!showAudioHelp)} className="text-gray-600 hover:text-white"><HelpCircle size={12}/></button></label><select value={audioSource} onChange={(e) => setAudioSource((e.target as any).value)} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value="system">System Audio (Loopback)</option><option value="none">No Audio (Video Only)</option><optgroup label="Input Devices">{audioInputDevices.map(d => (<option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0,5)}...`}</option>))}</optgroup></select>{showAudioHelp && (<div className="mt-2 text-[10px] text-gray-400 bg-white/5 p-2 rounded border border-white/5">For best results, install <b>VB-CABLE</b>. Set your browser/player output to 'CABLE Input' and select 'CABLE Output' here.</div>)}</div></div>  
-                                    <div className="space-y-4"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Resolution</label><div className="flex bg-black/50 rounded-lg p-1 border border-white/10">{(['1080p', '1440p', '4k'] as const).map(q => (<button key={q} onClick={() => setStreamQuality(q)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${streamQuality === q ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}>{q.toUpperCase()}</button>))}</div></div><div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Frame Rate</label><select value={streamFps} onChange={(e) => setStreamFps(Number((e.target as any).value) as 30 | 60)} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value={30}>30 FPS</option><option value={60}>60 FPS (Silky Smooth)</option></select></div><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Bitrate</label><select value={streamBitrate} onChange={(e) => setStreamBitrate(Number((e.target as any).value))} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value={0}>Automatic (Default)</option><option value={15000}>High (15 Mbps)</option><option value={30000}>Extreme (30 Mbps)</option><option value={50000}>Insane (50 Mbps)</option></select></div></div></div>  
+                                    <div className="space-y-4"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block flex items-center gap-2">Audio Source <button onClick={() => setShowAudioHelp(!showAudioHelp)} className="text-gray-600 hover:text-white"><HelpCircle size={12}/></button></label><select value={audioSource} onChange={(e) => setAudioSource(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value="system">System Audio (Loopback)</option><option value="none">No Audio (Video Only)</option><optgroup label="Input Devices">{audioInputDevices.map(d => (<option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0,5)}...`}</option>))}</optgroup></select>{showAudioHelp && (<div className="mt-2 text-[10px] text-gray-400 bg-white/5 p-2 rounded border border-white/5">For best results, install <b>VB-CABLE</b>. Set your browser/player output to 'CABLE Input' and select 'CABLE Output' here.</div>)}</div></div>  
+                                    <div className="space-y-4"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Resolution</label><div className="flex bg-black/50 rounded-lg p-1 border border-white/10">{(['1080p', '1440p', '4k'] as const).map(q => (<button key={q} onClick={() => setStreamQuality(q)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${streamQuality === q ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}>{q.toUpperCase()}</button>))}</div></div><div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Frame Rate</label><select value={streamFps} onChange={(e) => setStreamFps(Number(e.target.value) as 30 | 60)} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value={30}>30 FPS</option><option value={60}>60 FPS (Silky Smooth)</option></select></div><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Bitrate</label><select value={streamBitrate} onChange={(e) => setStreamBitrate(Number(e.target.value))} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value={0}>Automatic (Default)</option><option value={15000}>High (15 Mbps)</option><option value={30000}>Extreme (30 Mbps)</option><option value={50000}>Insane (50 Mbps)</option></select></div></div></div>  
                                 </div>  
                             )}  
                             <div className="flex justify-end items-center gap-3">
                                 {sourceTab === 'file' && fileStreamUrl && (
                                     <div className="flex items-center gap-2 mr-4">
                                         <label className="text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Bitrate</label>
-                                        <select value={streamBitrate} onChange={(e) => setStreamBitrate(Number((e.target as any).value))} className="bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none w-48">
+                                        <select value={streamBitrate} onChange={(e) => setStreamBitrate(Number(e.target.value))} className="bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none w-48">
                                             <option value={0}>Automatic (Default)</option>
                                             <option value={15000}>High (15 Mbps)</option>
                                             <option value={30000}>Extreme (30 Mbps)</option>
@@ -1024,7 +945,7 @@ if ((window as any).document.pictureInPictureElement) await (window as any).docu
             <div className={`absolute bottom-8 z-50 transition-all duration-500 ${controlsVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`} onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()}>  
                 <div className="flex flex-col items-center gap-2">  
                     <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-black/50 hover:scale-[1.02] transition-all">  
-                        <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{localVolume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={localVolume} onChange={(e) => setLocalVolume(parseFloat((e.target as any).value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div>  
+                        <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{localVolume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={localVolume} onChange={(e) => setLocalVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div>  
                         <div className="w-px h-6 bg-white/10"></div>  
                         {audioSource === 'file' && (<button onClick={toggleFilePlay} className="p-2 hover:bg-white/10 rounded-full text-white transition-colors">{isPlayingFile ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>)}  
                         {audioSource === 'file' && (
