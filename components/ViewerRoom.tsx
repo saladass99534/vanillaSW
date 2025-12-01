@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { Button } from './Button';
@@ -206,16 +205,27 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
       setIsConnecting(true);
 
       if (electronAvailable) {
-          window.electron.connectToHost(hostIpInput, 65432);
+          let host = hostIpInput;
+          // If user enters web address like "100.x.x.x:8080", extract just the IP for TCP connection
+          if (host.includes(':')) {
+              host = host.split(':')[0];
+          }
+          window.electron.connectToHost(host, 65432);
       } else {
-          connectWebMode(hostIpInput, 65432);
+          connectWebMode(hostIpInput);
       }
   };
 
-  const connectWebMode = (ip: string, port: number) => {
+  const connectWebMode = (ipWithPort: string) => {
       try {
+          let target = ipWithPort;
+          // If no port is specified, default to 8080 for web viewers
+          if (!target.includes(':')) {
+              target = `${target}:8080`;
+          }
+
           // FIX: Cast to any to resolve missing DOM types.
-          const ws = new (window as any).WebSocket(`ws://${ip}:${port}`);
+          const ws = new (window as any).WebSocket(`ws://${target}`);
           socketRef.current = ws;
 
           ws.onopen = () => {
@@ -234,7 +244,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
           ws.onerror = (err: any) => {
               console.error("WebSocket error", err);
               // FIX: Cast to any to resolve missing DOM types.
-              (window as any).alert("Connection failed. Ensure Host is online and Tailscale is active.");
+              (window as any).alert("Connection failed. Ensure Host is online, web streaming is enabled, and you are on the same network (e.g., Tailscale).");
               setIsConnecting(false);
               setIsConnected(false);
           };
@@ -701,7 +711,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
            <div className="flex justify-center mb-6"><div className="bg-purple-500/20 p-4 rounded-2xl"><Users className="text-purple-400 w-8 h-8" /></div></div>
            <h2 className="text-3xl font-bold text-center text-white mb-2">Join Party</h2>
            <p className="text-gray-400 text-center mb-8 text-sm">
-               {electronAvailable ? "Enter Host IP Address" : "Connect to Host"}
+               {electronAvailable ? "Enter Host IP Address" : "Enter Host IP Address"}
            </p>
            <div className="space-y-6">
              <div>
@@ -709,7 +719,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                 <input type="text" value={hostIpInput} onChange={(e) => setHostIpInput((e.target as any).value)} placeholder="100.x.x.x" className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50" />
              </div>
              <Button className="w-full py-4" size="lg" onClick={connectToHost} isLoading={isConnecting} disabled={!hostIpInput}>{isConnecting ? 'CONNECTING...' : 'JOIN'}</Button>
-             {!electronAvailable && <p className="text-blue-400 text-xs text-center mt-2">Running in Web Mode</p>}
+             {!electronAvailable && <p className="text-xs text-gray-400 text-center mt-2">Running in Web Mode. Make sure you are on the same network as the host (e.g. Tailscale).</p>}
            </div>
          </div>
        </div>
