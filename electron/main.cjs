@@ -1,303 +1,271 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer, dialog, session } = require('electron'); 
 const path = require('path');
-const fs = require('fs');
-const { execFile } = require('child_process');
-const net = require('net');
-const { WebSocketServer } = require('ws');
+const { exec } = require('child_process');
+const WebSocket = require('ws');
 const express = require('express');
 const http = require('http');
+const fs = require('fs');
 
 let mainWindow;
-let hostServer;
-let hostSockets = new Map();
-let guestSocket;
+let wss; 
+let guestWs; 
+const connectedClients = new Map();
 
-// --- NEW: Web Server variables ---
-let webServer;
-let webSocketServer;
+// --- WEB SERVER FOR MOBILE/WEB VIEWERS ---
+const expressApp = express();
+const httpServer = http.createServer(expressApp);
+const WEB_PORT = 8080;
 
-const isWindows = process.platform === 'win32';
+function startWebServer() {
+  const distPath = path.join(__dirname, '../dist');
+  expressApp.use(express.static(distPath));
+
+  expressApp.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+
+  httpServer.listen(WEB_PORT, '0.0.0.0', () => {
+    console.log(`Web Server running at http://0.0.0.0:${WEB_PORT}`);
+  });
+  
+  httpServer.on('error', (e) => {
+      console.error("Web Server Error:", e);
+  });
+}
+
+function stopWebServer() {
+    if (httpServer.listening) {
+        httpServer.close(() => {
+            console.log('Web Server stopped');
+        });
+    }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
-    height: 800,
-    minWidth: 1000,
-    minHeight: 700,
+    height: 720,
+    fullscreen: true,
+    show: false,       
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
-      contextIsolation: true,
       nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false, 
+      webSecurity: false 
     },
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#111',
-      symbolColor: '#fff',
-      height: 32
-    },
-    trafficLightPosition: { x: 15, y: 15 },
-    backgroundColor: '#111111',
+    autoHideMenuBar: true,
+    backgroundColor: '#000000',
+    title: "SheiyuWatch"
   });
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+  // --- MANDATORY FFMPEG SECURITY HEADERS ---
+  // This enables SharedArrayBuffer which ffmpeg.wasm requires
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      },
+    });
+  });
+
+  mainWindow.maximize();
+  mainWindow.show();
+
+  const isDev = process.env.npm_lifecycle_event === 'electron:dev';
+  
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 }
 
+if (process.platform === 'darwin') {
+    app.commandLine.appendSwitch('enable-features', 'MacLoopbackAudioForScreenShare,MacSckSystemAudioLoopbackOverride');
+}
+
 app.whenReady().then(() => {
   createWindow();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+  app.on('activate', function () {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-app.on('before-quit', () => {
-  if (hostServer) hostServer.close();
-  if (guestSocket) guestSocket.destroy();
-  if (webServer) webServer.close();
-  if (webSocketServer) webSocketServer.close();
+app.on('window-all-closed', function () {
+  if (process.platform !== 'darwin') app.quit();
 });
 
 // --- IPC Handlers ---
 
-ipcMain.handle('get-tailscale-status', async () => {
-  const command = isWindows ? 'C:\\Program Files\\Tailscale\\tailscale.exe' : '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
-  const args = ['status', '--json'];
+ipcMain.on('toggle-web-server', (event, enable) => {
+    if (enable) {
+        if (!httpServer.listening) startWebServer();
+    } else {
+        stopWebServer();
+    }
+});
 
+ipcMain.on('set-window-opacity', (event, opacity) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setOpacity(opacity);
+    }
+});
+
+// --- FILE PICKER HANDLERS ---
+
+ipcMain.handle('open-video-file', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Movies', extensions: ['mp4', 'mkv', 'webm', 'mov', 'm4v', 'ts', 'mts'] }]
+  });
+  if (canceled) {
+    return null;
+  } else {
+    return filePaths[0];
+  }
+});
+
+ipcMain.handle('open-subtitle-file', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Subtitles', extensions: ['vtt', 'srt'] }]
+  });
+  
+  if (canceled || filePaths.length === 0) {
+    return null;
+  }
+
+  const filePath = filePaths[0];
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return { path: filePath, content: content };
+  } catch (e) {
+    console.error("Failed to read subtitle file", e);
+    return null;
+  }
+});
+
+ipcMain.handle('get-tailscale-status', async () => {
   return new Promise((resolve, reject) => {
-    execFile(command, args, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`Tailscale exec error: ${error.message}`);
-        return reject(new Error('Tailscale CLI not found or failed.'));
+    const isMac = process.platform === 'darwin';
+    const possiblePaths = isMac ? [
+      '/Applications/Tailscale.app/Contents/MacOS/Tailscale', 
+      '/usr/local/bin/tailscale', 
+      '/opt/homebrew/bin/tailscale', 
+      'tailscale' 
+    ] : [ 'tailscale', 'C:\\Program Files\\Tailscale\\tailscale.exe' ];
+
+    const tryPath = (index) => {
+      if (index >= possiblePaths.length) {
+        resolve({}); 
+        return;
       }
-      if (stderr) {
-        console.warn(`Tailscale stderr: ${stderr}`);
-      }
-      try {
-        const status = JSON.parse(stdout);
-        resolve(status);
-      } catch (e) {
-        reject(new Error('Failed to parse Tailscale status JSON.'));
-      }
-    });
+      const pathStr = possiblePaths[index];
+      const cmd = pathStr.includes(' ') ? `"${pathStr}"` : pathStr;
+      
+      exec(`${cmd} status --json`, (error, stdout, stderr) => {
+        if (!error && stdout) {
+          try { resolve(JSON.parse(stdout)); return; } catch (e) { }
+        }
+        tryPath(index + 1);
+      });
+    };
+    tryPath(0);
   });
 });
 
 ipcMain.handle('get-desktop-sources', async () => {
-  const sources = await desktopCapturer.getSources({
-    types: ['window', 'screen'],
-    thumbnailSize: { width: 300, height: 300 },
-    fetchWindowIcons: true,
-  });
-  return sources.map(source => ({
-    id: source.id,
-    name: source.name,
-    thumbnail: source.thumbnail.toDataURL(),
-  }));
-});
-
-ipcMain.handle('set-window-opacity', (event, opacity) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (win) win.setOpacity(opacity);
-});
-
-ipcMain.handle('open-video-file', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
-    filters: [
-        { name: 'Videos', extensions: ['mkv', 'avi', 'mp4', 'mov', 'webm', 'flv', 'wmv'] }
-    ]
-  });
-  if (!result.canceled && result.filePaths.length > 0) {
-    const filePath = result.filePaths[0];
-    try {
-        const data = await fs.promises.readFile(filePath);
-        return { path: filePath, data };
-    } catch (e) {
-        console.error("Failed to read video file:", e);
-        return null;
-    }
+  try {
+    const sources = await desktopCapturer.getSources({ 
+      types: ['window', 'screen'],
+      thumbnailSize: { width: 1920, height: 1080 },
+      fetchWindowIcons: true 
+    });
+    return sources.map(source => ({
+      id: source.id,
+      name: source.name,
+      thumbnail: source.thumbnail.toDataURL()
+    }));
+  } catch (error) {
+    console.error("Error getting desktop sources:", error);
+    return [];
   }
-  return null;
 });
 
-ipcMain.handle('open-subtitle-file', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
-    filters: [
-      { name: 'Subtitles', extensions: ['srt', 'vtt'] }
-    ]
-  });
-  if (!result.canceled && result.filePaths.length > 0) {
-    const filePath = result.filePaths[0];
-    try {
-        const content = await fs.promises.readFile(filePath, 'utf-8');
-        return { content, path: filePath };
-    } catch (e) {
-        console.error("Failed to read subtitle file:", e);
-        return null;
-    }
-  }
-  return null;
-});
+// --- HOST LOGIC ---
 
+ipcMain.on('start-host-server', (event, port) => {
+  try {
+    if (wss) { wss.close(); connectedClients.clear(); }
+    wss = new WebSocket.Server({ port: port || 65432 });
 
-// --- P2P SERVER LOGIC (HOST) ---
-
-ipcMain.on('start-host-server', (event, port = 65432) => {
-  if (hostServer) {
-    hostServer.close();
-  }
-  hostServer = net.createServer(socket => {
-    const socketId = `socket-${Math.random().toString(36).substr(2, 9)}`;
-    hostSockets.set(socketId, socket);
-
-    mainWindow.webContents.send('host-client-connected', { socketId });
-
-    socket.on('data', data => {
-      try {
-        const parsed = JSON.parse(data.toString());
-        mainWindow.webContents.send('host-signal-received', { socketId, data: parsed });
-      } catch (e) {
-        console.error("Host couldn't parse data:", e);
-      }
+    wss.on('listening', () => {
+      console.log(`Host signaling server started on port ${port || 65432}`);
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('host-server-started', { success: true, port: port || 65432 });
     });
 
-    socket.on('close', () => {
-      hostSockets.delete(socketId);
-      mainWindow.webContents.send('host-client-disconnected', { socketId });
-    });
+    wss.on('connection', (ws) => {
+      const socketId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+      connectedClients.set(socketId, ws);
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('host-client-connected', { socketId });
 
-    socket.on('error', (err) => {
-      console.error(`Socket error (${socketId}):`, err.message);
-    });
-  });
+      ws.on('message', (message) => {
+        try {
+          const parsed = JSON.parse(message);
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('host-signal-received', { socketId, data: parsed });
+        } catch (e) { console.error("Error parsing message", e); }
+      });
 
-  hostServer.listen(port, () => {
-    mainWindow.webContents.send('host-server-started', { success: true, port });
-  }).on('error', (err) => {
-    mainWindow.webContents.send('host-server-started', { success: false, error: err.message });
-  });
+      ws.on('close', () => {
+        connectedClients.delete(socketId);
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('host-client-disconnected', { socketId });
+      });
+    });
+  } catch (error) {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('host-server-started', { success: false, error: error.message });
+  }
 });
 
 ipcMain.on('stop-host-server', () => {
-  if (hostServer) {
-    hostSockets.forEach(socket => socket.destroy());
-    hostSockets.clear();
-    hostServer.close();
-    hostServer = null;
-  }
+    if (wss) {
+        connectedClients.forEach((ws) => ws.terminate());
+        connectedClients.clear();
+        wss.close();
+        wss = null;
+    }
 });
 
 ipcMain.on('host-send-signal', (event, { socketId, data }) => {
-  const socket = hostSockets.get(socketId);
-  if (socket) {
-    if (typeof socket.send === 'function') { // Check if it's a WebSocket
-        socket.send(JSON.stringify(data));
-    } else { // It's a TCP socket
-        socket.write(JSON.stringify(data));
-    }
-  }
+  const ws = connectedClients.get(socketId);
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
 });
 
-// --- P2P CLIENT LOGIC (GUEST) ---
+// --- GUEST LOGIC ---
 
-ipcMain.on('connect-to-host', (event, ip, port = 65432) => {
-  if (guestSocket) {
-    guestSocket.destroy();
+ipcMain.on('connect-to-host', (event, ip, port) => {
+  if (guestWs) guestWs.terminate();
+  const url = `ws://${ip}:${port || 65432}`;
+  try {
+    guestWs = new WebSocket(url);
+    guestWs.on('open', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-connected'); });
+    guestWs.on('message', (data) => {
+      try {
+        const parsed = JSON.parse(data);
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-signal-received', parsed);
+      } catch (e) { console.error("Guest parse error", e); }
+    });
+    guestWs.on('error', (err) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-error', err.message); });
+    guestWs.on('close', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-disconnected'); });
+  } catch (error) {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('guest-error', error.message);
   }
-  guestSocket = new net.Socket();
-  
-  guestSocket.connect(port, ip, () => {
-    mainWindow.webContents.send('guest-connected');
-  });
-
-  guestSocket.on('data', data => {
-    try {
-        const parsed = JSON.parse(data.toString());
-        mainWindow.webContents.send('guest-signal-received', parsed);
-    } catch(e) { console.error("Guest couldn't parse data", e) }
-  });
-
-  guestSocket.on('close', () => {
-    mainWindow.webContents.send('guest-disconnected');
-    guestSocket = null;
-  });
-
-  guestSocket.on('error', (err) => {
-    mainWindow.webContents.send('guest-error', err.message);
-    guestSocket = null;
-  });
 });
 
 ipcMain.on('guest-send-signal', (event, data) => {
-  if (guestSocket && !guestSocket.destroyed) {
-    guestSocket.write(JSON.stringify(data));
-  }
-});
-
-// --- WEB SERVER (for Web/Mobile viewers) ---
-// FIXED: This now runs a full HTTP server to fix the "Upgrade is required" error.
-ipcMain.on('toggle-web-server', (event, enable) => {
-    if (enable && !webServer) {
-        const expressApp = express();
-        webServer = http.createServer(expressApp);
-        webSocketServer = new WebSocketServer({ server: webServer });
-
-        // Serve the static frontend files
-        const distPath = path.join(__dirname, '../dist');
-        expressApp.use(express.static(distPath));
-
-        webSocketServer.on('connection', ws => {
-            const socketId = `ws-socket-${Math.random().toString(36).substr(2, 9)}`;
-            hostSockets.set(socketId, ws);
-            
-            mainWindow.webContents.send('host-client-connected', { socketId });
-
-            ws.on('message', message => {
-                try {
-                    const parsed = JSON.parse(message.toString());
-                    mainWindow.webContents.send('host-signal-received', { socketId, data: parsed });
-                } catch(e) {}
-            });
-
-            ws.on('close', () => {
-                hostSockets.delete(socketId);
-                mainWindow.webContents.send('host-client-disconnected', { socketId });
-            });
-
-            ws.on('error', (err) => {
-                console.error('WebSocket error:', err.message);
-                hostSockets.delete(socketId);
-                mainWindow.webContents.send('host-client-disconnected', { socketId });
-            });
-        });
-
-        webServer.listen(8080, () => {
-            console.log('Web server listening on port 8080');
-        });
-
-    } else if (!enable && webServer) {
-        if (webSocketServer) {
-            webSocketServer.close();
-            webSocketServer = null;
-        }
-        if (webServer) {
-            webServer.close();
-            webServer = null;
-        }
-        console.log('Web server stopped');
-    }
+  if (guestWs && guestWs.readyState === WebSocket.OPEN) guestWs.send(JSON.stringify(data));
 });
