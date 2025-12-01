@@ -1,18 +1,19 @@
+
 import React, { useState, useEffect, useRef } from 'react'; 
 import SimplePeer from 'simple-peer'; 
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { toBlobURL } from '@ffmpeg/util';
 import {  
   Users, Copy, Check, Tv, Maximize, Minimize, Volume2, VolumeX, 
   ScreenShare, ScreenShareOff, Power, Crown, X, Smile, Image as ImageIcon, ArrowLeft, Zap, Send, 
   Monitor, AppWindow, AlertTriangle, AlertCircle, Wifi, HelpCircle, 
   Activity, RefreshCw, Globe, RotateCcw, Clapperboard, PictureInPicture, 
-  FileVideo, Trash2, Play, Pause, Captions, Plus, Pin, Loader2 
+  FileVideo, Trash2, Play, Pause, Captions, Plus, Pin, Loader2
 } from 'lucide-react'; 
 import { Button } from './Button'; 
 import { Chat, ChatHandle } from './Chat'; 
 import { ChatMessage, generateRandomName, Member, ReplyContext, DesktopSource, StreamStats, FloatingEmoji } from '../types'; 
 import { MOVIE_DB, SHOW_DB, GENRES, Genre, MediaType } from '../movieData'; 
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { toBlobURL } from '@ffmpeg/util';
 
 interface HostRoomProps { 
   onBack: () => void; 
@@ -111,7 +112,11 @@ const setVideoBitrate = (sdp: string, bitrate: number): string => {
     return sdpLines.join('\r\n');
 };
 
-const INCOMPATIBLE_FORMATS = ['.mkv', '.avi', '.mov', '.wmv', '.flv'];
+const getFileExtension = (filename: string) => {
+  return filename.slice(((filename.lastIndexOf(".") - 1) >>> 0) + 2).toLowerCase();
+}
+
+const INCOMPATIBLE_EXTENSIONS = ['mkv', 'avi', 'mov', 'wmv', 'flv'];
 
 export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => { 
   const [isRoomStarted, setIsRoomStarted] = useState(false); 
@@ -152,16 +157,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null); 
   const [isRefreshingSources, setIsRefreshingSources] = useState(false); 
     
-  // --- FFMPEG TRANSCODING STATE ---
-  const [isTranscoding, setIsTranscoding] = useState(false);
-  const [transcodingProgress, setTranscodingProgress] = useState(0);
-  const ffmpegRef = useRef(new FFmpeg());
-  // ---------------------------------
-
   const [fileStreamUrl, setFileStreamUrl] = useState<string | null>(null); 
   const fileVideoRef = useRef<HTMLVideoElement>(null);    
-  const audioContextRef = useRef<AudioContext | null>(null); 
-  const audioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null); 
+  // FIX: Use 'any' for types missing from DOM definitions.
+  const audioContextRef = useRef<any | null>(null); 
+  // FIX: Use 'any' for types missing from DOM definitions.
+  const audioSourceNodeRef = useRef<any | null>(null); 
 
   const [movieTitle, setMovieTitle] = useState<string>(""); 
 
@@ -174,7 +175,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   const [currentSubtitleText, setCurrentSubtitleText] = useState(''); 
 
-  const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]); 
+  // FIX: Use 'any' for types missing from DOM definitions.
+  const [audioInputDevices, setAudioInputDevices] = useState<any[]>([]); 
   const [audioSource, setAudioSource] = useState<string>('system');    
   const [streamQuality, setStreamQuality] = useState<'1080p' | '1440p' | '4k'>('1080p'); 
   const [streamFps, setStreamFps] = useState<30 | 60>(60); 
@@ -193,10 +195,16 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]); 
   const [members, setMembers] = useState<Member[]>([]); 
 
+  // --- FFmpeg States ---
+  const [isTranscoding, setIsTranscoding] = useState(false);
+  const [transcodingProgress, setTranscodingProgress] = useState(0);
+  const ffmpegRef = useRef<FFmpeg | null>(null);
+
   const peersRef = useRef<Map<string, SimplePeer.Instance>>(new Map()); 
   const videoRef = useRef<HTMLVideoElement>(null); 
   const ambilightRef = useRef<HTMLVideoElement>(null); 
-  const streamRef = useRef<MediaStream | null>(null); 
+  // FIX: Use 'any' for types missing from DOM definitions.
+  const streamRef = useRef<any | null>(null); 
   const containerRef = useRef<HTMLDivElement>(null); 
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); 
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); 
@@ -207,78 +215,72 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0; 
   const activeTheme = THEMES[currentTheme] || THEMES['default']; 
 
-  // --- FFMPEG TRANSCODING LOGIC ---
-  const transcodeFile = async (fileName: string, fileData: Uint8Array) => {
-    setIsTranscoding(true);
-    setTranscodingProgress(0);
-    const ffmpeg = ffmpegRef.current;
+  const loadFFmpeg = async () => {
+    if (ffmpegRef.current) return ffmpegRef.current;
     
+    const ffmpeg = new FFmpeg();
     ffmpeg.on('log', ({ message }) => {
-        // You can log messages for debugging if needed
+        // You can log messages here if needed for debugging
         // console.log(message);
     });
-
-    ffmpeg.on('progress', ({ progress, time }) => {
+    ffmpeg.on('progress', ({ progress }) => {
         setTranscodingProgress(Math.round(progress * 100));
     });
 
-    try {
-      const coreURL = await toBlobURL('/ffmpeg-core.js', 'text/javascript');
-      const wasmURL = await toBlobURL('/ffmpeg-core.wasm', 'application/wasm');
-      
-      await ffmpeg.load({ coreURL, wasmURL });
-        
-      await ffmpeg.writeFile(fileName, fileData);
-
-      // Transcode to MP4 with h264 video and aac audio, fast preset
-      await ffmpeg.exec(['-i', fileName, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-c:a', 'aac', '-movflags', '+faststart', 'output.mp4']);
-        
-      const data = await ffmpeg.readFile('output.mp4');
-      const blob = new Blob([data], { type: 'video/mp4' });
-      const url = URL.createObjectURL(blob);
-        
-      setFileStreamUrl(url);
-      setMovieTitle(fileName);
-      setSourceTab('file');
-      setSelectedSourceId('file');
-        
-    } catch (e) {
-      console.error("Transcoding failed:", e);
-      alert("Video processing failed. The file might be corrupted or in an unsupported format.");
-    } finally {
-      setIsTranscoding(false);
-      setTranscodingProgress(0);
-      if (ffmpeg.loaded) {
-        try {
-          await ffmpeg.terminate();
-          ffmpegRef.current = new FFmpeg(); // Re-initialize for next use
-        } catch (e) { console.error("Could not terminate ffmpeg", e); }
-      }
-    }
+    // FIX: Cast to any to resolve missing DOM types.
+    const baseURL = `${(window as any).location.origin}${(window as any).location.pathname}`.replace(/\/index\.html$/, '');
+    await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}ffmpeg-core.wasm`, 'application/wasm'),
+    });
+    
+    ffmpegRef.current = ffmpeg;
+    return ffmpeg;
   };
 
   const handleFileSelect = async () => {
     if (!electronAvailable) return;
-    const fileResult = await window.electron.openVideoFile();
-    if (fileResult) {
-      const { path: filePath, data: fileData } = fileResult;
-      const fileName = filePath.split(/[\\/]/).pop() || 'video.unknown';
-      // FIX: The 'path' module is not available in the browser. Replaced path.extname with a browser-compatible implementation.
-      const dotIndex = fileName.lastIndexOf('.');
-      const fileExtension = (dotIndex < 1) ? '' : fileName.substring(dotIndex).toLowerCase();
+    
+    const file = await window.electron.openVideoFile();
+    if (!file) return;
 
-      if (INCOMPATIBLE_FORMATS.includes(fileExtension)) {
-        await transcodeFile(fileName, fileData);
-      } else {
-        // It's a compatible format like MP4, use it directly
-        setFileStreamUrl(`file://${filePath}`);
-        setMovieTitle(fileName);
+    const extension = getFileExtension(file.path);
+
+    if (INCOMPATIBLE_EXTENSIONS.includes(extension)) {
+      setIsTranscoding(true);
+      setTranscodingProgress(0);
+      try {
+        const ffmpeg = await loadFFmpeg();
+        await ffmpeg.writeFile('input.' + extension, file.data);
+        
+        // Transcode to a widely compatible format: H.264 video, AAC audio, in an MP4 container
+        await ffmpeg.exec(['-i', 'input.' + extension, '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-movflags', 'frag_keyframe+empty_moov', 'output.mp4']);
+        
+        const data = await ffmpeg.readFile('output.mp4');
+        const blob = new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+        
+        setFileStreamUrl(url);
+        setMovieTitle(file.path.split(/[\\/]/).pop() || "Transcoded Video");
         setSourceTab('file');
         setSelectedSourceId('file');
+      } catch (error) {
+        console.error('Transcoding failed:', error);
+        // FIX: Cast to any to resolve missing DOM types.
+        (window as any).alert('Failed to process video file. It may be corrupted or in an unsupported format.');
+      } finally {
+        setIsTranscoding(false);
       }
+    } else {
+      // It's a compatible format like MP4, create a Blob URL directly
+      const blob = new Blob([file.data.buffer], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      setFileStreamUrl(url);
+      setMovieTitle(file.path.split(/[\\/]/).pop() || "Video File");
+      setSourceTab('file');
+      setSelectedSourceId('file');
     }
   };
-  // ------------------------------
 
   useEffect(() => {  
       broadcast({ type: 'cc_size', payload: ccSize });  
@@ -289,9 +291,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
     if (!video || !subtitleUrl) return; 
 
     const timer = setTimeout(() => { 
-        if (video.textTracks && video.textTracks.length > 0) { 
-            for (let i = 0; i < video.textTracks.length; i++) { 
-                const track = video.textTracks[i]; 
+        // FIX: Cast to any to resolve missing DOM types.
+        if ((video as any).textTracks && (video as any).textTracks.length > 0) { 
+            // FIX: Cast to any to resolve missing DOM types.
+            for (let i = 0; i < (video as any).textTracks.length; i++) { 
+                // FIX: Cast to any to resolve missing DOM types.
+                const track = (video as any).textTracks[i]; 
                 if (track.mode === 'showing' || track.kind === 'subtitles') { 
                     track.mode = 'hidden';  
                     track.oncuechange = () => { 
@@ -357,12 +362,15 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   useEffect(() => {  
     const handleFsChange = () => {  
-        const isFs = !!document.fullscreenElement;  
+        // FIX: Cast to any to resolve missing DOM types.
+        const isFs = !!(window as any).document.fullscreenElement;  
         setIsFullscreen(isFs);  
         if (!isFs) setIsTheaterMode(false);  
     };  
-    document.addEventListener('fullscreenchange', handleFsChange);  
-    return () => { document.removeEventListener('fullscreenchange', handleFsChange); performCleanup(); };  
+    // FIX: Cast to any to resolve missing DOM types.
+    (window as any).document.addEventListener('fullscreenchange', handleFsChange);  
+    // FIX: Cast to any to resolve missing DOM types.
+    return () => { (window as any).document.removeEventListener('fullscreenchange', handleFsChange); performCleanup(); };  
   }, []);  
 
   // --- IDENTICAL LOGIC FROM VIEWER ROOM ---
@@ -395,9 +403,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   };
 
   useEffect(() => {  
-    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTheaterMode) setIsTheaterMode(false); };  
-    window.addEventListener('keydown', handleKeyDown);  
-    return () => window.removeEventListener('keydown', handleKeyDown);  
+    const handleKeyDown = (e: KeyboardEvent) => { // FIX: Cast to any to resolve missing DOM types.
+if ((e as any).key === 'Escape' && isTheaterMode) setIsTheaterMode(false); };  
+    // FIX: Cast to any to resolve missing DOM types.
+    (window as any).addEventListener('keydown', handleKeyDown);  
+    // FIX: Cast to any to resolve missing DOM types.
+    return () => (window as any).removeEventListener('keydown', handleKeyDown);  
   }, [isTheaterMode]);  
 
   // Auto-wake chat (Identical to ViewerRoom)
@@ -405,16 +416,19 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
       const handleGlobalKeyDown = (e: KeyboardEvent) => {  
           resetInputIdleTimer();  
           
+          // FIX: Cast to any to resolve missing DOM types.
           if ((isTheaterMode || isFullscreen) && !isInputFocused) {
-              if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              if ((e as any).key.length === 1 && !(e as any).ctrlKey && !(e as any).metaKey && !(e as any).altKey) {
                   setShowControls(true);
                   chatRef.current?.focusInput();
               }
           }
       };  
       
-      window.addEventListener('keydown', handleGlobalKeyDown);  
-      return () => window.removeEventListener('keydown', handleGlobalKeyDown);  
+      // FIX: Cast to any to resolve missing DOM types.
+      (window as any).addEventListener('keydown', handleGlobalKeyDown);  
+      // FIX: Cast to any to resolve missing DOM types.
+      return () => (window as any).removeEventListener('keydown', handleGlobalKeyDown);  
   }, [isTheaterMode, isFullscreen, isInputFocused]);  
 
   const handleHypeAction = (emoji: string) => {  
@@ -426,26 +440,34 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   const handleFileTimeUpdate = () => {  
       if (fileVideoRef.current) { 
-          setCurrentTime(fileVideoRef.current.currentTime); 
-          if (fileVideoRef.current.duration) { 
-              broadcast({ type: 'duration_sync', payload: fileVideoRef.current.duration }); 
+          // FIX: Cast to any to resolve missing DOM types.
+          setCurrentTime((fileVideoRef.current as any).currentTime); 
+          // FIX: Cast to any to resolve missing DOM types.
+          if ((fileVideoRef.current as any).duration) { 
+              // FIX: Cast to any to resolve missing DOM types.
+              broadcast({ type: 'duration_sync', payload: (fileVideoRef.current as any).duration }); 
           } 
       } 
   };  
 
   const handleFileSeek = (e: React.ChangeEvent<HTMLInputElement>) => {  
-      const time = parseFloat(e.target.value);  
+      // FIX: Cast to any to resolve missing DOM types.
+      const time = parseFloat((e.target as any).value);  
       setCurrentTime(time);  
-      if (fileVideoRef.current) fileVideoRef.current.currentTime = time;  
+      // FIX: Cast to any to resolve missing DOM types.
+      if (fileVideoRef.current) (fileVideoRef.current as any).currentTime = time;  
   };  
 
   const toggleFilePlay = () => {  
       if (fileVideoRef.current) {  
-          if (fileVideoRef.current.paused) {  
-              fileVideoRef.current.play();  
+          // FIX: Cast to any to resolve missing DOM types.
+          if ((fileVideoRef.current as any).paused) {  
+              // FIX: Cast to any to resolve missing DOM types.
+              (fileVideoRef.current as any).play();  
               setIsPlayingFile(true);  
           } else {  
-              fileVideoRef.current.pause();  
+              // FIX: Cast to any to resolve missing DOM types.
+              (fileVideoRef.current as any).pause();  
               setIsPlayingFile(false);  
           }  
       }  
@@ -467,7 +489,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
               setSubtitleUrl(url);  
           } catch (e) {  
               console.error("Failed to process subtitles", e);  
-              alert("Failed to load subtitle file.");  
+              // FIX: Cast to any to resolve missing DOM types.
+              (window as any).alert("Failed to load subtitle file.");  
           }  
       }  
       setShowCCMenu(false);  
@@ -495,8 +518,9 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   useEffect(() => {  
       const fetchAudioDevices = async () => {  
           try {  
-              const devices = await navigator.mediaDevices.enumerateDevices();  
-              setAudioInputDevices(devices.filter(d => d.kind === 'audioinput'));  
+              // FIX: Cast to any to resolve missing DOM types.
+              const devices = await (navigator as any).mediaDevices.enumerateDevices();  
+              setAudioInputDevices(devices.filter((d: any) => d.kind === 'audioinput'));  
           } catch (e) { console.error(e); }  
       };  
       fetchAudioDevices();  
@@ -511,7 +535,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   useEffect(() => {  
     if (!electronAvailable) return;  
 
-    window.electron.onHostServerStarted((res: any) => { if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false); setMembers([{ id: 'HOST', name: username, isHost: true }]); } else { alert("Failed to start server: " + res.error); setIsInitializing(false); } });  
+    window.electron.onHostServerStarted((res: any) => { // FIX: Cast to any to resolve missing DOM types.
+if (res.success || res.port) { setIsRoomStarted(true); setIsInitializing(false); setMembers([{ id: 'HOST', name: username, isHost: true }]); } else { (window as any).alert("Failed to start server: " + res.error); setIsInitializing(false); } });  
     window.electron.onHostClientConnected(({ socketId }: any) => {  
         const p = new SimplePeer({ initiator: true, trickle: false, stream: streamRef.current || undefined });  
 
@@ -561,7 +586,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                       }  
                                   }  
                                   lastStatsRef.current = { timestamp: report.timestamp, bytesSent: report.bytesSent };  
-                                  setStats(prev => ({ ...prev, resolution: `${videoRef.current?.videoWidth}x${videoRef.current?.videoHeight}`, fps: report.framesPerSecond || 0 }));  
+                                  // FIX: Cast to any to resolve missing DOM types.
+                                  setStats(prev => ({ ...prev, resolution: `${(videoRef.current as any)?.videoWidth}x${(videoRef.current as any)?.videoHeight}`, fps: report.framesPerSecond || 0 }));  
                               }  
                           }  
                           if (report.type === 'candidate-pair' && report.state === 'succeeded') {  
@@ -580,12 +606,15 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
 
   // --- AUDIO MONITORING FIX: PREVIEW VOLUME ---
   useEffect(() => {  
-      if (fileVideoRef.current) fileVideoRef.current.volume = 1.0;  
+      // FIX: Cast to any to resolve missing DOM types.
+      if (fileVideoRef.current) (fileVideoRef.current as any).volume = 1.0;  
        
       // Control preview volume for ALL modes (Screen, File, or VB-Cable)
       if (videoRef.current) {  
-          videoRef.current.volume = localVolume;  
-          videoRef.current.muted = (localVolume === 0);  
+          // FIX: Cast to any to resolve missing DOM types.
+          (videoRef.current as any).volume = localVolume;  
+          // FIX: Cast to any to resolve missing DOM types.
+          (videoRef.current as any).muted = (localVolume === 0);  
       }  
   }, [localVolume, sourceTab]);  
   // ------------------------------------------
@@ -630,7 +659,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const startStream = async (sourceId: string) => {  
       setShowSourceSelector(false);  
       try {  
-          let finalStream: MediaStream;  
+          let finalStream: any;  
           let maxWidth = streamQuality === '4k' ? 3840 : (streamQuality === '1440p' ? 2560 : 1920);  
           let maxHeight = streamQuality === '4k' ? 2160 : (streamQuality === '1440p' ? 1440 : 1080);  
 
@@ -639,12 +668,16 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           };  
 
           if (sourceId === 'file') {  
-              if (!fileVideoRef.current || !fileStreamUrl) { alert("No file selected!"); return; }  
-              fileVideoRef.current.volume = 1.0;   
-              fileVideoRef.current.muted = false;  
+              // FIX: Cast to any to resolve missing DOM types.
+              if (!fileVideoRef.current || !fileStreamUrl) { (window as any).alert("No file selected!"); return; }  
+              // FIX: Cast to any to resolve missing DOM types.
+              (fileVideoRef.current as any).volume = 1.0;   
+              // FIX: Cast to any to resolve missing DOM types.
+              (fileVideoRef.current as any).muted = false;  
 
               if (!audioContextRef.current) {  
-                  const AudioContext = window.AudioContext || (window as any).webkitAudioContext;  
+                  // FIX: Cast to any to resolve missing DOM types.
+                  const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;  
                   audioContextRef.current = new AudioContext();  
               }  
               const ctx = audioContextRef.current;  
@@ -653,13 +686,15 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
               const destination = ctx.createMediaStreamDestination();  
               sourceNode.connect(destination);   
 
-              try { await fileVideoRef.current.play(); setIsPlayingFile(true); } catch (playErr) { console.warn(playErr); }  
+              // FIX: Cast to any to resolve missing DOM types.
+              try { await (fileVideoRef.current as any).play(); setIsPlayingFile(true); } catch (playErr) { console.warn(playErr); }  
 
               // @ts-ignore  
               const videoStream = fileVideoRef.current.captureStream(60);   
-              if (videoStream.getTracks().length === 0) throw new Error("Failed to capture stream.");  
+              if (videoStream.getTracks().length === 0) throw new Error("Failed to capture stream from video element.");  
 
-              finalStream = new MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);  
+              // FIX: Cast to any to resolve missing DOM types for constructor.
+              finalStream = new (window as any).MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);  
               setAudioSource('file');   
               setLocalVolume(0.5); 
               
@@ -670,26 +705,31 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
               }
           }  
           else if (audioSource === 'none') {  
-              finalStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);  
+              // FIX: Cast to any to resolve missing DOM types.
+              finalStream = await (navigator as any).mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);  
           } else if (audioSource === 'system') {  
-              finalStream = await navigator.mediaDevices.getUserMedia({  
+              // FIX: Cast to any to resolve missing DOM types.
+              finalStream = await (navigator as any).mediaDevices.getUserMedia({  
                   audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },  
                   video: videoConstraints  
               } as any);  
               // Removed setLocalVolume(0) here to allow monitoring 
           } else {  
               // --- AUDIO SYNC FIX FOR VB-CABLE / EXTERNAL MIC --- 
-              const videoStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);  
+              // FIX: Cast to any to resolve missing DOM types.
+              const videoStream = await (navigator as any).mediaDevices.getUserMedia({ audio: false, video: videoConstraints } as any);  
               try {  
                   // 1. Get raw audio with relaxed latency (removed latency: 0) 
-                  const audioStream = await navigator.mediaDevices.getUserMedia({  
+                  // FIX: Cast to any to resolve missing DOM types.
+                  const audioStream = await (navigator as any).mediaDevices.getUserMedia({  
                       audio: { deviceId: { exact: audioSource }, autoGainControl: false, echoCancellation: false, noiseSuppression: false, channelCount: 2 } as any,  
                       video: false  
                   });  
 
                   // 2. Route through AudioContext to align clocks with the system 
                   if (!audioContextRef.current) {  
-                      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;  
+                      // FIX: Cast to any to resolve missing DOM types.
+                      const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;  
                       audioContextRef.current = new AudioContext();  
                   } 
                   const ctx = audioContextRef.current;  
@@ -698,7 +738,8 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                   source.connect(destination);  
 
                   // 3. Combine processed audio with video 
-                  finalStream = new MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);  
+                  // FIX: Cast to any to resolve missing DOM types for constructor.
+                  finalStream = new (window as any).MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);  
               } catch (audioErr) { console.error(audioErr); finalStream = videoStream; }  
               // -------------------------------------------------- 
           }  
@@ -709,12 +750,16 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
           // This fixes the "too much compression" issue on desktop browsers.
 
           if (videoRef.current) {  
-              videoRef.current.srcObject = finalStream;  
-              videoRef.current.play().catch(e => console.error("Preview Play Error", e));  
+              // FIX: Cast to any to resolve missing DOM types.
+              (videoRef.current as any).srcObject = finalStream;  
+              // FIX: Cast to any to resolve missing DOM types.
+              (videoRef.current as any).play().catch((e: any) => console.error("Preview Play Error", e));  
           }  
           if (ambilightRef.current) {  
-              ambilightRef.current.srcObject = finalStream;  
-              ambilightRef.current.play().catch(() => {});  
+              // FIX: Cast to any to resolve missing DOM types.
+              (ambilightRef.current as any).srcObject = finalStream;  
+              // FIX: Cast to any to resolve missing DOM types.
+              (ambilightRef.current as any).play().catch(() => {});  
           }  
           broadcast({ type: 'bitrate_sync', payload: streamBitrate });  
           setIsSharing(true);  
@@ -722,19 +767,29 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             
           broadcast({ type: 'metadata', payload: { title: movieTitle } }); 
 
-      } catch (e) { console.error(e); alert("Failed to start stream: " + e); }  
+      } catch (e) { console.error(e); // FIX: Cast to any to resolve missing DOM types.
+(window as any).alert("Failed to start stream: " + e); }  
   };  
 
   const stopSharing = () => {  
       broadcast({ type: 'stream_stopped' });  
-      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); peersRef.current.forEach(p => p.removeStream(streamRef.current!)); streamRef.current = null; }  
-      if (videoRef.current) videoRef.current.srcObject = null;  
-      if (ambilightRef.current) ambilightRef.current.srcObject = null;  
+      // FIX: Cast to any to resolve missing DOM types.
+      if (streamRef.current) { (streamRef.current as any).getTracks().forEach((t: any) => t.stop()); peersRef.current.forEach(p => p.removeStream(streamRef.current!)); streamRef.current = null; }  
+      // FIX: Cast to any to resolve missing DOM types.
+      if (videoRef.current) (videoRef.current as any).srcObject = null;  
+      // FIX: Cast to any to resolve missing DOM types.
+      if (ambilightRef.current) (ambilightRef.current as any).srcObject = null;  
         
       if (fileVideoRef.current) {  
-          fileVideoRef.current.pause();  
-          fileVideoRef.current.src = "";   
-          fileVideoRef.current.load();      
+          // FIX: Cast to any to resolve missing DOM types.
+          (fileVideoRef.current as any).pause();  
+          if (fileStreamUrl && fileStreamUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(fileStreamUrl);
+          }
+          // FIX: Cast to any to resolve missing DOM types.
+          (fileVideoRef.current as any).src = "";   
+          // FIX: Cast to any to resolve missing DOM types.
+          (fileVideoRef.current as any).load();      
           setIsPlayingFile(false);  
       }  
       setFileStreamUrl(null);  
@@ -749,9 +804,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   };  
 
   const toggleMute = () => { if (localVolume > 0) setLocalVolume(0); else setLocalVolume(0.5); };  
-  const toggleFullscreen = () => { const elem = containerRef.current; if (!document.fullscreenElement) elem?.requestFullscreen().catch(console.error); else document.exitFullscreen(); };  
-  const toggleTheaterMode = () => { if (isFullscreen) document.exitFullscreen(); else setIsTheaterMode(!isTheaterMode); };  
-  const togglePiP = async () => { try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else if (videoRef.current && videoRef.current !== document.pictureInPictureElement) await videoRef.current.requestPictureInPicture(); } catch (err) { console.error(err); } };  
+  const toggleFullscreen = () => { const elem = containerRef.current; // FIX: Cast to any to resolve missing DOM types.
+if (!(window as any).document.fullscreenElement) (elem as any)?.requestFullscreen().catch(console.error); else (window as any).document.exitFullscreen(); };  
+  const toggleTheaterMode = () => { // FIX: Cast to any to resolve missing DOM types.
+if (isFullscreen) (window as any).document.exitFullscreen(); else setIsTheaterMode(!isTheaterMode); };  
+  const togglePiP = async () => { try { // FIX: Cast to any to resolve missing DOM types.
+if ((window as any).document.pictureInPictureElement) await (window as any).document.exitPictureInPicture(); else if (videoRef.current && videoRef.current !== (window as any).document.pictureInPictureElement) await (videoRef.current as any).requestPictureInPicture(); } catch (err) { console.error(err); } };  
   const startSharedPicker = () => { if (pickerStepRef.current !== 'idle' && pickerStepRef.current !== 'reveal') return; setPickerStep('type'); pickerStepRef.current = 'type'; const msg: ChatMessage = { id: Date.now().toString(), senderId: 'HOST', senderName: 'SYSTEM', text: '', timestamp: Date.now(), isSystemEvent: true, eventPayload: { state: 'type_selection' } }; setMessages(p => [...p, msg]); broadcast({ type: 'chat', payload: msg }); };  
   const handlePickerInteraction = (action: string, value?: string) => { if (action === 'start_picker') { startSharedPicker(); return; } const msgId = Date.now().toString(); let payload: any = {}; const currentStep = pickerStepRef.current; const currentMediaType = activeMediaTypeRef.current; const seen = seenTitlesRef.current; if (action === 'select_type') { if (currentStep !== 'type') return; const type = value as MediaType; setActiveMediaType(type); activeMediaTypeRef.current = type; setPickerStep('genre'); pickerStepRef.current = 'genre'; payload = { state: 'genre_selection', mediaType: type }; } else if (action === 'select_genre' || action === 'reroll') { if (currentStep !== 'genre' && action !== 'reroll') return; const genre = value as Genre; if(action !== 'reroll') { setCurrentTheme(genre); broadcast({ type: 'theme_change', payload: genre }); } setPickerStep('reveal'); pickerStepRef.current = 'reveal'; const database = currentMediaType === 'Movie' ? MOVIE_DB : SHOW_DB; const allOptions = database[genre] || []; let available = allOptions.filter(m => !seen.has(m.title)); if (available.length < 3) available = allOptions; const picks = [...available].sort(() => 0.5 - Math.random()).slice(0, 3); setSeenTitles(prev => { const next = new Set(prev); picks.forEach(p => next.add(p.title)); return next; }); payload = { state: 'reveal', mediaType: currentMediaType, genre, movies: picks }; } const msg: ChatMessage = { id: msgId, senderId: 'HOST', senderName: 'SYSTEM', text: '', timestamp: Date.now(), isSystemEvent: true, eventPayload: payload }; setMessages(p => [...p, msg]); broadcast({ type: 'chat', payload: msg }); };  
   const handleSendMessage = (text: string, type: 'text' | 'gif' = 'text', replyTo?: ReplyContext) => { const msg: ChatMessage = { id: Date.now().toString() + Math.floor(Math.random() * 1000), senderId: 'HOST', senderName: username, text, timestamp: Date.now(), type, replyTo, reactions: {} }; setMessages(p => { if (p.some(m => m.id === msg.id)) return p; return [...p, msg]; }); broadcast({ type: 'chat', payload: msg }); };  
@@ -786,7 +844,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
         <div ref={containerRef} className="flex-1 relative bg-black flex items-center justify-center overflow-hidden group select-none"  
             onMouseMove={handleMouseMove} onClick={() => setShowControls(!showControls)} onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout}>  
               
-            <video ref={fileVideoRef} src={fileStreamUrl || ''} className="absolute top-0 left-0 w-full h-full -z-50 opacity-100 pointer-events-none" style={{ visibility: 'visible' }} playsInline crossOrigin="anonymous" onTimeUpdate={handleFileTimeUpdate} onLoadedMetadata={() => fileVideoRef.current && setDuration(fileVideoRef.current.duration)}>  
+            <video ref={fileVideoRef} src={fileStreamUrl || ''} className="absolute top-0 left-0 w-full h-full -z-50 opacity-100 pointer-events-none" style={{ visibility: 'visible' }} playsInline crossOrigin="anonymous" onTimeUpdate={handleFileTimeUpdate} onLoadedMetadata={() => fileVideoRef.current && setDuration((fileVideoRef.current as any).duration)}>  
                 {subtitleUrl && <track key={subtitleUrl} label="English" kind="subtitles" src={subtitleUrl} default />}  
             </video>  
 
@@ -802,7 +860,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                 <div className="pointer-events-auto flex items-center gap-4">  
                    <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 shadow-lg">  
                        <Wifi size={14} className={myIp ? "text-green-400" : "text-gray-500"} />  
-                       <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(myIp ? `${myIp}:8080` : '')} title="Click to Copy IP">{myIp ? `${myIp}:8080` : "Detecting IP..."}</span>  
+                       <span className="font-mono text-xs text-gray-200 select-all cursor-pointer hover:text-white" onClick={() => (navigator as any).clipboard.writeText(myIp ? `${myIp}:8080` : '')} title="Click to Copy IP">{myIp ? `${myIp}:8080` : "Detecting IP..."}</span>  
                    </div>  
                    <Button size="sm" variant="danger" onClick={() => setShowExitConfirm(true)} className="gap-2 rounded-full px-4 shadow-lg backdrop-blur-md bg-red-600/80 hover:bg-red-600"><Power size={14} /> End</Button>  
                 </div>  
@@ -817,6 +875,20 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                     </div>  
                 </div>  
             )}  
+
+            {isTranscoding && (
+                <div className="absolute inset-0 z-[101] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center">
+                        <Loader2 className="w-12 h-12 text-blue-400 mx-auto mb-4 animate-spin" />
+                        <h3 className="text-lg font-bold">Preparing Video...</h3>
+                        <p className="text-gray-400 text-sm mt-2 mb-4">This may take a moment for larger files.</p>
+                        <div className="w-full bg-black/50 rounded-full h-2.5 border border-white/10">
+                            <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${transcodingProgress}%` }}></div>
+                        </div>
+                        <p className="text-xs font-mono mt-2 text-blue-300">{transcodingProgress}%</p>
+                    </div>
+                </div>
+            )}
               
             {showSourceSelector && (  
                 <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>  
@@ -832,18 +904,6 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                             <div className="ml-auto flex items-center gap-2"><button onClick={prepareScreenShare} className={`p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all ${isRefreshingSources ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button></div>  
                         </div>  
                         {isMac && sourceTab === 'window' && audioSource === 'system' && (<div className="mx-6 mt-4 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg flex items-center gap-3 animate-in slide-in-from-top-2"><AlertTriangle className="text-orange-500 shrink-0" size={20} /><p className="text-xs text-orange-200"><span className="font-bold block text-orange-400 mb-0.5">Audio Limitation Detected</span>macOS cannot record audio from individual windows. Please use <b>Screens</b> or <b>Video File</b> mode.</p></div>)}  
-                        
-                        {isTranscoding && (
-                            <div className="absolute inset-0 bg-[#1e1f22]/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-4">
-                                <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
-                                <p className="text-lg font-bold text-white">Preparing Stream...</p>
-                                <div className="w-64 bg-black/50 rounded-full h-2 border border-white/10">
-                                    <div className="bg-blue-500 h-full rounded-full transition-all" style={{ width: `${transcodingProgress}%` }}></div>
-                                </div>
-                                <p className="text-sm text-gray-400">{transcodingProgress}% Complete</p>
-                            </div>
-                        )}
-                        
                         <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">  
                             {sourceTab === 'file' ? (  
                                 <div className="flex flex-col items-center justify-center h-full text-center">  
@@ -857,7 +917,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                             <p className="text-gray-500 text-xs mt-1">Audio will be captured directly from file.</p>  
                                         </div>  
                                     ) : (  
-                                        <div className="text-center"><p className="text-gray-500 mb-4">Select a local video file.<br/><span className="text-xs text-gray-600">Incompatible formats (mkv, avi) will be converted automatically.</span></p><Button onClick={handleFileSelect}>Choose File</Button></div>  
+                                        <div className="text-center"><p className="text-gray-500 mb-4">Select a local video file for perfect quality.</p><Button onClick={handleFileSelect}>Choose File</Button></div>  
                                     )}  
                                 </div>  
                             ) : sourceTab === 'screen' ? (  
@@ -869,15 +929,15 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         <div className="p-6 border-t border-white/10 bg-[#151618] rounded-b-2xl">  
                             {sourceTab !== 'file' && (  
                                 <div className="grid grid-cols-2 gap-6 mb-6">  
-                                    <div className="space-y-4"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block flex items-center gap-2">Audio Source <button onClick={() => setShowAudioHelp(!showAudioHelp)} className="text-gray-600 hover:text-white"><HelpCircle size={12}/></button></label><select value={audioSource} onChange={(e) => setAudioSource(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value="system">System Audio (Loopback)</option><option value="none">No Audio (Video Only)</option><optgroup label="Input Devices">{audioInputDevices.map(d => (<option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0,5)}...`}</option>))}</optgroup></select>{showAudioHelp && (<div className="mt-2 text-[10px] text-gray-400 bg-white/5 p-2 rounded border border-white/5">For best results, install <b>VB-CABLE</b>. Set your browser/player output to 'CABLE Input' and select 'CABLE Output' here.</div>)}</div></div>  
-                                    <div className="space-y-4"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Resolution</label><div className="flex bg-black/50 rounded-lg p-1 border border-white/10">{(['1080p', '1440p', '4k'] as const).map(q => (<button key={q} onClick={() => setStreamQuality(q)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${streamQuality === q ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}>{q.toUpperCase()}</button>))}</div></div><div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Frame Rate</label><select value={streamFps} onChange={(e) => setStreamFps(Number(e.target.value) as 30 | 60)} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value={30}>30 FPS</option><option value={60}>60 FPS (Silky Smooth)</option></select></div><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Bitrate</label><select value={streamBitrate} onChange={(e) => setStreamBitrate(Number(e.target.value))} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value={0}>Automatic (Default)</option><option value={15000}>High (15 Mbps)</option><option value={30000}>Extreme (30 Mbps)</option><option value={50000}>Insane (50 Mbps)</option></select></div></div></div>  
+                                    <div className="space-y-4"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block flex items-center gap-2">Audio Source <button onClick={() => setShowAudioHelp(!showAudioHelp)} className="text-gray-600 hover:text-white"><HelpCircle size={12}/></button></label><select value={audioSource} onChange={(e) => setAudioSource((e.target as any).value)} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value="system">System Audio (Loopback)</option><option value="none">No Audio (Video Only)</option><optgroup label="Input Devices">{audioInputDevices.map(d => (<option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0,5)}...`}</option>))}</optgroup></select>{showAudioHelp && (<div className="mt-2 text-[10px] text-gray-400 bg-white/5 p-2 rounded border border-white/5">For best results, install <b>VB-CABLE</b>. Set your browser/player output to 'CABLE Input' and select 'CABLE Output' here.</div>)}</div></div>  
+                                    <div className="space-y-4"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Resolution</label><div className="flex bg-black/50 rounded-lg p-1 border border-white/10">{(['1080p', '1440p', '4k'] as const).map(q => (<button key={q} onClick={() => setStreamQuality(q)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${streamQuality === q ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}>{q.toUpperCase()}</button>))}</div></div><div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Frame Rate</label><select value={streamFps} onChange={(e) => setStreamFps(Number((e.target as any).value) as 30 | 60)} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value={30}>30 FPS</option><option value={60}>60 FPS (Silky Smooth)</option></select></div><div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Bitrate</label><select value={streamBitrate} onChange={(e) => setStreamBitrate(Number((e.target as any).value))} className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"><option value={0}>Automatic (Default)</option><option value={15000}>High (15 Mbps)</option><option value={30000}>Extreme (30 Mbps)</option><option value={50000}>Insane (50 Mbps)</option></select></div></div></div>  
                                 </div>  
                             )}  
                             <div className="flex justify-end items-center gap-3">
                                 {sourceTab === 'file' && fileStreamUrl && (
                                     <div className="flex items-center gap-2 mr-4">
                                         <label className="text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Bitrate</label>
-                                        <select value={streamBitrate} onChange={(e) => setStreamBitrate(Number(e.target.value))} className="bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none w-48">
+                                        <select value={streamBitrate} onChange={(e) => setStreamBitrate(Number((e.target as any).value))} className="bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none w-48">
                                             <option value={0}>Automatic (Default)</option>
                                             <option value={15000}>High (15 Mbps)</option>
                                             <option value={30000}>Extreme (30 Mbps)</option>
@@ -966,7 +1026,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
             <div className={`absolute bottom-8 z-50 transition-all duration-500 ${controlsVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'}`} onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout} onClick={(e) => e.stopPropagation()}>  
                 <div className="flex flex-col items-center gap-2">  
                     <div className="flex items-center gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-black/50 hover:scale-[1.02] transition-all">  
-                        <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{localVolume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={localVolume} onChange={(e) => setLocalVolume(parseFloat(e.target.value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div>  
+                        <div className="flex items-center gap-2 group/vol"><button onClick={toggleMute} className="p-2 hover:bg-white/10 rounded-full text-gray-300 hover:text-white transition-colors">{localVolume === 0 ? <VolumeX size={20} className="text-red-400"/> : <Volume2 size={20} />}</button><div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center"><input type="range" min="0" max="1" step="0.05" value={localVolume} onChange={(e) => setLocalVolume(parseFloat((e.target as any).value))} className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent}`} /></div></div>  
                         <div className="w-px h-6 bg-white/10"></div>  
                         {audioSource === 'file' && (<button onClick={toggleFilePlay} className="p-2 hover:bg-white/10 rounded-full text-white transition-colors">{isPlayingFile ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}</button>)}  
                         {audioSource === 'file' && (
