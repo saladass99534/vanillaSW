@@ -1,35 +1,35 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('electron', {
-  // System Info
+const electronAPI = {
+  // --- General ---
   getTailscaleStatus: () => ipcRenderer.invoke('get-tailscale-status'),
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
-  setWindowOpacity: (opacity) => ipcRenderer.send('set-window-opacity', opacity),
-  
-  // NEW: File Pickers
+  setWindowOpacity: (opacity) => ipcRenderer.invoke('set-window-opacity', opacity),
   openVideoFile: () => ipcRenderer.invoke('open-video-file'),
   openSubtitleFile: () => ipcRenderer.invoke('open-subtitle-file'),
 
-  // Web Server
+  // --- Web Server ---
   toggleWebServer: (enable) => ipcRenderer.send('toggle-web-server', enable),
-  
-  // Host-side logic
+
+  // --- Host ---
   startHostServer: (port) => ipcRenderer.send('start-host-server', port),
   stopHostServer: () => ipcRenderer.send('stop-host-server'),
-  onHostServerStarted: (cb) => ipcRenderer.on('host-server-started', (e, ...args) => cb(...args)),
-  onHostClientConnected: (cb) => ipcRenderer.on('host-client-connected', (e, ...args) => cb(...args)),
-  onHostClientDisconnected: (cb) => ipcRenderer.on('host-client-disconnected', (e, ...args) => cb(...args)),
-  onHostSignalReceived: (cb) => ipcRenderer.on('host-signal-received', (e, ...args) => cb(...args)),
+  onHostServerStarted: (cb) => ipcRenderer.on('host-server-started', (event, ...args) => cb(...args)),
+  onHostClientConnected: (cb) => ipcRenderer.on('host-client-connected', (event, ...args) => cb(...args)),
+  onHostClientDisconnected: (cb) => ipcRenderer.on('host-client-disconnected', (event, ...args) => cb(...args)),
+  onHostSignalReceived: (cb) => ipcRenderer.on('host-signal-received', (event, ...args) => cb(...args)),
   hostSendSignal: (socketId, data) => ipcRenderer.send('host-send-signal', { socketId, data }),
 
-  // Guest-side logic
+  // --- Guest ---
   connectToHost: (ip, port) => ipcRenderer.send('connect-to-host', ip, port),
-  onGuestConnected: (cb) => ipcRenderer.on('guest-connected', cb),
-  onGuestSignalReceived: (cb) => ipcRenderer.on('guest-signal-received', (e, ...args) => cb(...args)),
-  onGuestError: (cb) => ipcRenderer.on('guest-error', (e, ...args) => cb(...args)),
-  onGuestDisconnected: (cb) => ipcRenderer.on('guest-disconnected', cb),
+  onGuestConnected: (cb) => ipcRenderer.on('guest-connected', (event, ...args) => cb(...args)),
+  onGuestSignalReceived: (cb) => ipcRenderer.on('guest-signal-received', (event, ...args) => cb(...args)),
+  onGuestError: (cb) => ipcRenderer.on('guest-error', (event, ...args) => cb(...args)),
+  onGuestDisconnected: (cb) => ipcRenderer.on('guest-disconnected', (event, ...args) => cb(...args)),
   guestSendSignal: (data) => ipcRenderer.send('guest-send-signal', data),
-
-  // Cleanup
+  
+  // --- Util ---
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
-});
+};
+
+contextBridge.exposeInMainWorld('electron', electronAPI);
