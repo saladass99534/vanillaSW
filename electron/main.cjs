@@ -4,14 +4,18 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const net = require('net');
 const { WebSocketServer } = require('ws');
+const express = require('express');
+const http = require('http');
 
 let mainWindow;
 let hostServer;
 let hostSockets = new Map();
 let guestSocket;
+
+// --- NEW: Web Server variables ---
+let webServer;
 let webSocketServer;
 
-const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
 
 function createWindow() {
@@ -62,6 +66,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   if (hostServer) hostServer.close();
   if (guestSocket) guestSocket.destroy();
+  if (webServer) webServer.close();
   if (webSocketServer) webSocketServer.close();
 });
 
@@ -108,7 +113,6 @@ ipcMain.handle('set-window-opacity', (event, opacity) => {
   if (win) win.setOpacity(opacity);
 });
 
-// MODIFIED: This now reads the file content into a Buffer for transcoding.
 ipcMain.handle('open-video-file', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
@@ -120,7 +124,6 @@ ipcMain.handle('open-video-file', async () => {
     const filePath = result.filePaths[0];
     try {
         const data = await fs.promises.readFile(filePath);
-        // Return both the path and the raw data
         return { path: filePath, data };
     } catch (e) {
         console.error("Failed to read video file:", e);
@@ -201,10 +204,9 @@ ipcMain.on('stop-host-server', () => {
 ipcMain.on('host-send-signal', (event, { socketId, data }) => {
   const socket = hostSockets.get(socketId);
   if (socket) {
-    // For WebSockets, we check for a 'send' method. For TCP sockets, 'write'.
-    if (typeof socket.send === 'function') {
+    if (typeof socket.send === 'function') { // Check if it's a WebSocket
         socket.send(JSON.stringify(data));
-    } else {
+    } else { // It's a TCP socket
         socket.write(JSON.stringify(data));
     }
   }
@@ -247,9 +249,17 @@ ipcMain.on('guest-send-signal', (event, data) => {
 });
 
 // --- WEB SERVER (for Web/Mobile viewers) ---
+// FIXED: This now runs a full HTTP server to fix the "Upgrade is required" error.
 ipcMain.on('toggle-web-server', (event, enable) => {
-    if (enable && !webSocketServer) {
-        webSocketServer = new WebSocketServer({ port: 8080 });
+    if (enable && !webServer) {
+        const expressApp = express();
+        webServer = http.createServer(expressApp);
+        webSocketServer = new WebSocketServer({ server: webServer });
+
+        // Serve the static frontend files
+        const distPath = path.join(__dirname, '../dist');
+        expressApp.use(express.static(distPath));
+
         webSocketServer.on('connection', ws => {
             const socketId = `ws-socket-${Math.random().toString(36).substr(2, 9)}`;
             hostSockets.set(socketId, ws);
@@ -274,8 +284,20 @@ ipcMain.on('toggle-web-server', (event, enable) => {
                 mainWindow.webContents.send('host-client-disconnected', { socketId });
             });
         });
-    } else if (!enable && webSocketServer) {
-        webSocketServer.close();
-        webSocketServer = null;
+
+        webServer.listen(8080, () => {
+            console.log('Web server listening on port 8080');
+        });
+
+    } else if (!enable && webServer) {
+        if (webSocketServer) {
+            webSocketServer.close();
+            webSocketServer = null;
+        }
+        if (webServer) {
+            webServer.close();
+            webServer = null;
+        }
+        console.log('Web server stopped');
     }
 });
