@@ -5,12 +5,14 @@ import {
   ScreenShare, ScreenShareOff, Power, Crown, X, Smile, Image as ImageIcon, ArrowLeft, Zap, Send, 
   Monitor, AppWindow, AlertTriangle, AlertCircle, Wifi, HelpCircle, 
   Activity, RefreshCw, Globe, RotateCcw, Clapperboard, PictureInPicture, 
-  FileVideo, Trash2, Play, Pause, Captions, Plus, Pin 
+  FileVideo, Trash2, Play, Pause, Captions, Plus, Pin, Loader2 
 } from 'lucide-react'; 
 import { Button } from './Button'; 
 import { Chat, ChatHandle } from './Chat'; 
 import { ChatMessage, generateRandomName, Member, ReplyContext, DesktopSource, StreamStats, FloatingEmoji } from '../types'; 
 import { MOVIE_DB, SHOW_DB, GENRES, Genre, MediaType } from '../movieData'; 
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { toBlobURL } from '@ffmpeg/util';
 
 interface HostRoomProps { 
   onBack: () => void; 
@@ -109,6 +111,8 @@ const setVideoBitrate = (sdp: string, bitrate: number): string => {
     return sdpLines.join('\r\n');
 };
 
+const INCOMPATIBLE_FORMATS = ['.mkv', '.avi', '.mov', '.wmv', '.flv'];
+
 export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => { 
   const [isRoomStarted, setIsRoomStarted] = useState(false); 
   const [myIp, setMyIp] = useState(''); 
@@ -148,6 +152,12 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null); 
   const [isRefreshingSources, setIsRefreshingSources] = useState(false); 
     
+  // --- FFMPEG TRANSCODING STATE ---
+  const [isTranscoding, setIsTranscoding] = useState(false);
+  const [transcodingProgress, setTranscodingProgress] = useState(0);
+  const ffmpegRef = useRef(new FFmpeg());
+  // ---------------------------------
+
   const [fileStreamUrl, setFileStreamUrl] = useState<string | null>(null); 
   const fileVideoRef = useRef<HTMLVideoElement>(null);    
   const audioContextRef = useRef<AudioContext | null>(null); 
@@ -196,6 +206,79 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
   const electronAvailable = typeof window !== 'undefined' && window.electron !== undefined; 
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0; 
   const activeTheme = THEMES[currentTheme] || THEMES['default']; 
+
+  // --- FFMPEG TRANSCODING LOGIC ---
+  const transcodeFile = async (fileName: string, fileData: Uint8Array) => {
+    setIsTranscoding(true);
+    setTranscodingProgress(0);
+    const ffmpeg = ffmpegRef.current;
+    
+    ffmpeg.on('log', ({ message }) => {
+        // You can log messages for debugging if needed
+        // console.log(message);
+    });
+
+    ffmpeg.on('progress', ({ progress, time }) => {
+        setTranscodingProgress(Math.round(progress * 100));
+    });
+
+    try {
+      const coreURL = await toBlobURL('/ffmpeg-core.js', 'text/javascript');
+      const wasmURL = await toBlobURL('/ffmpeg-core.wasm', 'application/wasm');
+      
+      await ffmpeg.load({ coreURL, wasmURL });
+        
+      await ffmpeg.writeFile(fileName, fileData);
+
+      // Transcode to MP4 with h264 video and aac audio, fast preset
+      await ffmpeg.exec(['-i', fileName, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-c:a', 'aac', '-movflags', '+faststart', 'output.mp4']);
+        
+      const data = await ffmpeg.readFile('output.mp4');
+      const blob = new Blob([data], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+        
+      setFileStreamUrl(url);
+      setMovieTitle(fileName);
+      setSourceTab('file');
+      setSelectedSourceId('file');
+        
+    } catch (e) {
+      console.error("Transcoding failed:", e);
+      alert("Video processing failed. The file might be corrupted or in an unsupported format.");
+    } finally {
+      setIsTranscoding(false);
+      setTranscodingProgress(0);
+      if (ffmpeg.loaded) {
+        try {
+          await ffmpeg.terminate();
+          ffmpegRef.current = new FFmpeg(); // Re-initialize for next use
+        } catch (e) { console.error("Could not terminate ffmpeg", e); }
+      }
+    }
+  };
+
+  const handleFileSelect = async () => {
+    if (!electronAvailable) return;
+    const fileResult = await window.electron.openVideoFile();
+    if (fileResult) {
+      const { path: filePath, data: fileData } = fileResult;
+      const fileName = filePath.split(/[\\/]/).pop() || 'video.unknown';
+      // FIX: The 'path' module is not available in the browser. Replaced path.extname with a browser-compatible implementation.
+      const dotIndex = fileName.lastIndexOf('.');
+      const fileExtension = (dotIndex < 1) ? '' : fileName.substring(dotIndex).toLowerCase();
+
+      if (INCOMPATIBLE_FORMATS.includes(fileExtension)) {
+        await transcodeFile(fileName, fileData);
+      } else {
+        // It's a compatible format like MP4, use it directly
+        setFileStreamUrl(`file://${filePath}`);
+        setMovieTitle(fileName);
+        setSourceTab('file');
+        setSelectedSourceId('file');
+      }
+    }
+  };
+  // ------------------------------
 
   useEffect(() => {  
       broadcast({ type: 'cc_size', payload: ccSize });  
@@ -745,10 +828,22 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                         <div className="flex gap-4 px-6 py-4 border-b border-white/5">  
                             <button onClick={() => setSourceTab('screen')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'screen' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>Screens</button>  
                             <button onClick={() => setSourceTab('window')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'window' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>Windows</button>  
-                            <button onClick={async () => { if (!fileStreamUrl) { const filePath = await window.electron.openVideoFile(); if (filePath) { setFileStreamUrl(`file://${filePath}`); setMovieTitle(filePath.split(/[\\/]/).pop()); setSourceTab('file'); setSelectedSourceId('file'); } } else { setSourceTab('file'); } }} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'file' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}><div className="flex items-center gap-2"><FileVideo size={16} /> Video File</div></button>  
+                            <button onClick={() => { if (!fileStreamUrl) { handleFileSelect(); } else { setSourceTab('file'); } }} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sourceTab === 'file' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}><div className="flex items-center gap-2"><FileVideo size={16} /> Video File</div></button>  
                             <div className="ml-auto flex items-center gap-2"><button onClick={prepareScreenShare} className={`p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all ${isRefreshingSources ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button></div>  
                         </div>  
                         {isMac && sourceTab === 'window' && audioSource === 'system' && (<div className="mx-6 mt-4 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg flex items-center gap-3 animate-in slide-in-from-top-2"><AlertTriangle className="text-orange-500 shrink-0" size={20} /><p className="text-xs text-orange-200"><span className="font-bold block text-orange-400 mb-0.5">Audio Limitation Detected</span>macOS cannot record audio from individual windows. Please use <b>Screens</b> or <b>Video File</b> mode.</p></div>)}  
+                        
+                        {isTranscoding && (
+                            <div className="absolute inset-0 bg-[#1e1f22]/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-4">
+                                <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+                                <p className="text-lg font-bold text-white">Preparing Stream...</p>
+                                <div className="w-64 bg-black/50 rounded-full h-2 border border-white/10">
+                                    <div className="bg-blue-500 h-full rounded-full transition-all" style={{ width: `${transcodingProgress}%` }}></div>
+                                </div>
+                                <p className="text-sm text-gray-400">{transcodingProgress}% Complete</p>
+                            </div>
+                        )}
+                        
                         <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">  
                             {sourceTab === 'file' ? (  
                                 <div className="flex flex-col items-center justify-center h-full text-center">  
@@ -762,7 +857,7 @@ export const HostRoom: React.FC<HostRoomProps> = ({ onBack }) => {
                                             <p className="text-gray-500 text-xs mt-1">Audio will be captured directly from file.</p>  
                                         </div>  
                                     ) : (  
-                                        <div className="text-center"><p className="text-gray-500 mb-4">Select a local video file for perfect quality.</p><Button onClick={async () => { const filePath = await window.electron.openVideoFile(); if (filePath) { setFileStreamUrl(`file://${filePath}`); setMovieTitle(filePath.split(/[\\/]/).pop()); setSourceTab('file'); setSelectedSourceId('file'); } }}>Choose File</Button></div>  
+                                        <div className="text-center"><p className="text-gray-500 mb-4">Select a local video file.<br/><span className="text-xs text-gray-600">Incompatible formats (mkv, avi) will be converted automatically.</span></p><Button onClick={handleFileSelect}>Choose File</Button></div>  
                                     )}  
                                 </div>  
                             ) : sourceTab === 'screen' ? (  
