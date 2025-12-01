@@ -1,25 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
-import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [
-    react(),
-    viteStaticCopy({
-      targets: [
-        {
-          src: 'node_modules/@ffmpeg/core/dist/ffmpeg-core.js',
-          dest: ''
-        },
-        {
-          src: 'node_modules/@ffmpeg/core/dist/ffmpeg-core.wasm',
-          dest: ''
-        }
-      ]
-    })
-  ],
+  plugins: [react()],
   base: './', // Important for Electron relative paths
   publicDir: 'assets',
   resolve: {
@@ -39,11 +24,9 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     headers: {
+      // These headers are MANDATORY for ffmpeg.wasm to work (SharedArrayBuffer)
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
-  optimizeDeps: {
-    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+    }
   }
 })
