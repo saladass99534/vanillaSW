@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { HostRoom } from './components/HostRoom';
 import { ViewerRoom } from './components/ViewerRoom';
@@ -18,7 +19,8 @@ const TiltCard: React.FC<TiltCardProps> = ({ children, onClick, accentColor }) =
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
+    // FIX: Cast to any to resolve missing DOM types.
+    const rect = (ref.current as any).getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
@@ -80,19 +82,22 @@ export default function App() {
   const electronAvailable = typeof window !== 'undefined' && window.electron !== undefined;
 
   useEffect(() => {
+    // FIX: Cast to any to resolve missing DOM types.
     const handleGlobalMouseMove = (e: MouseEvent) => {
-      const x = (e.clientX / window.innerWidth) * 2 - 1;
-      const y = (e.clientY / window.innerHeight) * 2 - 1;
+      const x = ((e as any).clientX / (window as any).innerWidth) * 2 - 1;
+      const y = ((e as any).clientY / (window as any).innerHeight) * 2 - 1;
       setMousePos({ x, y });
     };
-    window.addEventListener('mousemove', handleGlobalMouseMove);
+    // FIX: Cast to any to resolve missing DOM types.
+    (window as any).addEventListener('mousemove', handleGlobalMouseMove);
     
     // Initial Scan
     if (electronAvailable) {
         scanNetwork();
     }
 
-    return () => window.removeEventListener('mousemove', handleGlobalMouseMove);
+    // FIX: Cast to any to resolve missing DOM types.
+    return () => (window as any).removeEventListener('mousemove', handleGlobalMouseMove);
   }, []);
 
   const scanNetwork = async () => {
@@ -239,7 +244,8 @@ export default function App() {
                                 </div>
                                 <div className="flex gap-2 flex-shrink-0">
                                     <button 
-                                        onClick={() => { navigator.clipboard.writeText(peer.TailscaleIPs[0]); }}
+                                        // FIX: Cast to any to resolve missing DOM types for 'navigator'.
+                                        onClick={() => { (navigator as any).clipboard.writeText(peer.TailscaleIPs[0]); }}
                                         className="p-1.5 bg-black/50 rounded-lg text-gray-400 hover:text-white"
                                         title="Copy IP"
                                     >
