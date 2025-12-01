@@ -101,7 +101,8 @@ declare global {
       
       removeAllListeners: (channel: string) => void;
       
-      openVideoFile: () => Promise<string | null>;
+      // Updated return type to include raw data for transcoding
+      openVideoFile: () => Promise<{ path: string; data: Uint8Array } | null>;
       openSubtitleFile: () => Promise<{ content: string; path: string } | null>;
     }
   }
