@@ -101,7 +101,7 @@ declare global {
       
       removeAllListeners: (channel: string) => void;
       
-      openVideoFile: () => Promise<{ path: string, data: Uint8Array } | null>;
+      openVideoFile: () => Promise<string | null>;
       openSubtitleFile: () => Promise<{ content: string; path: string } | null>;
     }
   }
