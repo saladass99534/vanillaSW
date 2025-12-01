@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react'; 
 import SimplePeer from 'simple-peer'; 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
@@ -840,6 +839,19 @@ if ((window as any).document.pictureInPictureElement) await (window as any).docu
 
   return (  
     <div className="flex h-screen bg-[#111] text-gray-100 overflow-hidden font-sans">  
+      {isTranscoding && (
+        <div className="absolute inset-0 z-[101] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center">
+                <Loader2 className="w-12 h-12 text-blue-400 mx-auto mb-4 animate-spin" />
+                <h3 className="text-lg font-bold">Preparing Video...</h3>
+                <p className="text-gray-400 text-sm mt-2 mb-4">This may take a moment for larger files.</p>
+                <div className="w-full bg-black/50 rounded-full h-2.5 border border-white/10">
+                    <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${transcodingProgress}%` }}></div>
+                </div>
+                <p className="text-xs font-mono mt-2 text-blue-300">{transcodingProgress}%</p>
+            </div>
+        </div>
+      )}
       <div className="flex-1 flex flex-col relative min-w-0">  
         <div ref={containerRef} className="flex-1 relative bg-black flex items-center justify-center overflow-hidden group select-none"  
             onMouseMove={handleMouseMove} onClick={() => setShowControls(!showControls)} onMouseEnter={clearControlsTimeout} onMouseLeave={resetControlsTimeout}>  
@@ -875,20 +887,6 @@ if ((window as any).document.pictureInPictureElement) await (window as any).docu
                     </div>  
                 </div>  
             )}  
-
-            {isTranscoding && (
-                <div className="absolute inset-0 z-[101] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => e.stopPropagation()}>
-                    <div className="bg-[#1e1f22] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center">
-                        <Loader2 className="w-12 h-12 text-blue-400 mx-auto mb-4 animate-spin" />
-                        <h3 className="text-lg font-bold">Preparing Video...</h3>
-                        <p className="text-gray-400 text-sm mt-2 mb-4">This may take a moment for larger files.</p>
-                        <div className="w-full bg-black/50 rounded-full h-2.5 border border-white/10">
-                            <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${transcodingProgress}%` }}></div>
-                        </div>
-                        <p className="text-xs font-mono mt-2 text-blue-300">{transcodingProgress}%</p>
-                    </div>
-                </div>
-            )}
               
             {showSourceSelector && (  
                 <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>  
