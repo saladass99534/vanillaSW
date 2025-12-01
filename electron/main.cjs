@@ -108,17 +108,19 @@ ipcMain.handle('set-window-opacity', (event, opacity) => {
   if (win) win.setOpacity(opacity);
 });
 
+// MODIFIED: This now reads the file content into a Buffer for transcoding.
 ipcMain.handle('open-video-file', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
-        { name: 'Videos', extensions: ['mkv', 'avi', 'mp4', 'mov', 'webm'] }
+        { name: 'Videos', extensions: ['mkv', 'avi', 'mp4', 'mov', 'webm', 'flv', 'wmv'] }
     ]
   });
   if (!result.canceled && result.filePaths.length > 0) {
     const filePath = result.filePaths[0];
     try {
         const data = await fs.promises.readFile(filePath);
+        // Return both the path and the raw data
         return { path: filePath, data };
     } catch (e) {
         console.error("Failed to read video file:", e);
@@ -199,7 +201,12 @@ ipcMain.on('stop-host-server', () => {
 ipcMain.on('host-send-signal', (event, { socketId, data }) => {
   const socket = hostSockets.get(socketId);
   if (socket) {
-    socket.write(JSON.stringify(data));
+    // For WebSockets, we check for a 'send' method. For TCP sockets, 'write'.
+    if (typeof socket.send === 'function') {
+        socket.send(JSON.stringify(data));
+    } else {
+        socket.write(JSON.stringify(data));
+    }
   }
 });
 
