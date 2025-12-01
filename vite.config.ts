@@ -10,12 +10,12 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         {
-          src: 'node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.js',
-          dest: '.'
+          src: 'node_modules/@ffmpeg/core/dist/ffmpeg-core.js',
+          dest: ''
         },
         {
-          src: 'node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.wasm',
-          dest: '.'
+          src: 'node_modules/@ffmpeg/core/dist/ffmpeg-core.wasm',
+          dest: ''
         }
       ]
     })
@@ -44,6 +44,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
   }
 })
