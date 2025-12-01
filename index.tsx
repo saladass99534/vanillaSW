@@ -14,8 +14,7 @@ if (typeof window !== 'undefined') {
 }
 // ---------------------------------
 
-// FIX: Cast to any to resolve missing DOM types for 'document'.
-const rootElement = (window as any).document.getElementById('root');
+const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
