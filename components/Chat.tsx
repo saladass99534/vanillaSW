@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Send, Smile, X, Reply, Loader2, Clapperboard, Tv, RefreshCw, Star, Pin, Zap } from 'lucide-react';
 import { ChatMessage, ReplyContext, Reaction, PickerEvent } from '../types';
@@ -137,28 +138,35 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
   const chatInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({
+      // FIX: Cast to any to resolve missing DOM types.
       focusInput: () => {
-          chatInputRef.current?.focus();
+          (chatInputRef.current as any)?.focus();
       }
   }));
 
   // --- MOBILE KEYBOARD FIX START ---
   useEffect(() => {
     // Only run this logic on mobile devices (touch supported)
-    if (typeof window !== 'undefined' && 'ontouchstart' in window && window.visualViewport) {
+    // FIX: Cast to any to resolve missing DOM types.
+    if (typeof window !== 'undefined' && 'ontouchstart' in window && (window as any).visualViewport) {
         const handleVisualResize = () => {
             // When the visual viewport resizes (keyboard open/close), 
             // force the window scroll to top. This prevents the browser from
             // scrolling the document body and creating the black gap.
-            window.scrollTo(0, 0);
+            // FIX: Cast to any to resolve missing DOM types.
+            (window as any).scrollTo(0, 0);
         };
 
-        window.visualViewport.addEventListener('resize', handleVisualResize);
-        window.visualViewport.addEventListener('scroll', handleVisualResize);
+        // FIX: Cast to any to resolve missing DOM types.
+        (window as any).visualViewport.addEventListener('resize', handleVisualResize);
+        // FIX: Cast to any to resolve missing DOM types.
+        (window as any).visualViewport.addEventListener('scroll', handleVisualResize);
         
         return () => {
-            window.visualViewport?.removeEventListener('resize', handleVisualResize);
-            window.visualViewport?.removeEventListener('scroll', handleVisualResize);
+            // FIX: Cast to any to resolve missing DOM types.
+            (window as any).visualViewport?.removeEventListener('resize', handleVisualResize);
+            // FIX: Cast to any to resolve missing DOM types.
+            (window as any).visualViewport?.removeEventListener('scroll', handleVisualResize);
         };
     }
   }, []);
@@ -188,7 +196,9 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
 
   const scrollToBottom = () => {
     if (!isOverlay) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        // CHANGED: behavior 'auto' to fix glitches on some browsers/mac
+        // FIX: Cast to any to resolve missing DOM types.
+        (messagesEndRef.current as any)?.scrollIntoView({ behavior: 'auto' });
     }
   };
 
@@ -198,7 +208,8 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
 
   useEffect(() => {
     if (showPicker && pickerTab === 'gif' && searchInputRef.current) {
-        setTimeout(() => searchInputRef.current?.focus(), 100);
+        // FIX: Cast to any to resolve missing DOM types.
+        setTimeout(() => (searchInputRef.current as any)?.focus(), 100);
     }
     if (!showPicker) setGifSearch(''); 
   }, [showPicker, pickerTab]);
@@ -339,7 +350,8 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
   const handleInputFocusInternal = () => {
     // Force scroll to top when focusing input on mobile
     if (typeof window !== 'undefined' && 'ontouchstart' in window) {
-        window.scrollTo(0, 0);
+        // FIX: Cast to any to resolve missing DOM types.
+        (window as any).scrollTo(0, 0);
     }
     if (onInputFocus) onInputFocus();
   };
@@ -409,7 +421,8 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
                                 placeholder="Search Tenor..." 
                                 className="w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white" 
                                 value={gifSearch} 
-                                onChange={e => setGifSearch(e.target.value)}
+                                // FIX: Cast to any to resolve missing DOM types.
+                                onChange={e => setGifSearch((e.target as any).value)}
                                 onFocus={handleInputFocusInternal}
                                 onBlur={onInputBlur}
                              />
@@ -507,7 +520,8 @@ export const Chat = forwardRef<ChatHandle, ChatProps>(({
                     ref={chatInputRef}
                     type="text"
                     value={inputText}
-                    onChange={(e) => { setInputText(e.target.value); if(onInputChange) onInputChange(); }}
+                    // FIX: Cast to any to resolve missing DOM types.
+                    onChange={(e) => { setInputText((e.target as any).value); if(onInputChange) onInputChange(); }}
                     onFocus={handleInputFocusInternal}
                     onBlur={onInputBlur}
                     placeholder={isOverlay ? "Type a message..." : "Message..."}
