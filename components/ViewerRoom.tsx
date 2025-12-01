@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import SimplePeer from 'simple-peer';
 import { Button } from './Button';
@@ -111,7 +112,8 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   
   // Mobile Detection & Viewport
   const [isMobile, setIsMobile] = useState(false);
-  const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
+  // FIX: Cast to any to resolve missing DOM types.
+  const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? (window as any).innerHeight : 0);
   const [areControlsHidden, setAreControlsHidden] = useState(false);
 
   // Audio State
@@ -140,30 +142,39 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   // Handle Mobile Viewport Resize (Keyboard detection)
   useEffect(() => {
       const handleResize = () => {
-          const isMob = window.innerWidth < 768;
+          // FIX: Cast to any to resolve missing DOM types.
+          const isMob = (window as any).innerWidth < 768;
           setIsMobile(isMob);
           // Use visualViewport if available to account for virtual keyboard
-          if (window.visualViewport) {
-              setViewportHeight(window.visualViewport.height);
+          // FIX: Cast to any to resolve missing DOM types.
+          if ((window as any).visualViewport) {
+              // FIX: Cast to any to resolve missing DOM types.
+              setViewportHeight((window as any).visualViewport.height);
           } else {
-              setViewportHeight(window.innerHeight);
+              // FIX: Cast to any to resolve missing DOM types.
+              setViewportHeight((window as any).innerHeight);
           }
       };
 
       handleResize();
       
-      window.addEventListener('resize', handleResize);
-      window.visualViewport?.addEventListener('resize', handleResize);
+      // FIX: Cast to any to resolve missing DOM types.
+      (window as any).addEventListener('resize', handleResize);
+      // FIX: Cast to any to resolve missing DOM types.
+      (window as any).visualViewport?.addEventListener('resize', handleResize);
       
       return () => {
-          window.removeEventListener('resize', handleResize);
-          window.visualViewport?.removeEventListener('resize', handleResize);
+          // FIX: Cast to any to resolve missing DOM types.
+          (window as any).removeEventListener('resize', handleResize);
+          // FIX: Cast to any to resolve missing DOM types.
+          (window as any).visualViewport?.removeEventListener('resize', handleResize);
       };
   }, []);
 
   useEffect(() => {
       if (!electronAvailable) {
-          const hostname = window.location.hostname;
+          // FIX: Cast to any to resolve missing DOM types.
+          const hostname = (window as any).location.hostname;
           if (hostname && hostname !== 'localhost' && hostname !== '12-7.0.0.1') {
               setHostIpInput(hostname);
           }
@@ -183,8 +194,10 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   // Sync volume with video element
   useEffect(() => {
       if (videoRef.current) {
-          videoRef.current.volume = volume;
-          videoRef.current.muted = (volume === 0);
+          // FIX: Cast to any to resolve missing DOM types.
+          (videoRef.current as any).volume = volume;
+          // FIX: Cast to any to resolve missing DOM types.
+          (videoRef.current as any).muted = (volume === 0);
       }
   }, [volume]);
 
@@ -201,14 +214,15 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
 
   const connectWebMode = (ip: string, port: number) => {
       try {
-          const ws = new WebSocket(`ws://${ip}:${port}`);
+          // FIX: Cast to any to resolve missing DOM types.
+          const ws = new (window as any).WebSocket(`ws://${ip}:${port}`);
           socketRef.current = ws;
 
           ws.onopen = () => {
               setIsConnected(true);
           };
 
-          ws.onmessage = (event) => {
+          ws.onmessage = (event: any) => {
               try {
                   const parsed = JSON.parse(event.data);
                   handleSignal(parsed);
@@ -217,15 +231,17 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
               }
           };
 
-          ws.onerror = (err) => {
+          ws.onerror = (err: any) => {
               console.error("WebSocket error", err);
-              alert("Connection failed. Ensure Host is online and Tailscale is active.");
+              // FIX: Cast to any to resolve missing DOM types.
+              (window as any).alert("Connection failed. Ensure Host is online and Tailscale is active.");
               setIsConnecting(false);
               setIsConnected(false);
           };
 
           ws.onclose = () => {
-              alert("Disconnected from Host");
+              // FIX: Cast to any to resolve missing DOM types.
+              (window as any).alert("Disconnected from Host");
               setIsConnected(false);
               setHasStream(false);
               if (peerRef.current) peerRef.current.destroy();
@@ -233,7 +249,8 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
           };
 
       } catch (e) {
-          alert("Failed to create WebSocket: " + e);
+          // FIX: Cast to any to resolve missing DOM types.
+          (window as any).alert("Failed to create WebSocket: " + e);
           setIsConnecting(false);
       }
   };
@@ -266,14 +283,19 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
 
                 p.on('stream', (stream) => {
                     if (videoRef.current) {
-                        videoRef.current.srcObject = stream;
-                        videoRef.current.volume = volume; // Ensure initial volume is set
-                        videoRef.current.play().then(() => setIsPlaying(true)).catch(e => console.log("Autoplay blocked", e));
+                        // FIX: Cast to any to resolve missing DOM types.
+                        (videoRef.current as any).srcObject = stream;
+                        // FIX: Cast to any to resolve missing DOM types.
+                        (videoRef.current as any).volume = volume; // Ensure initial volume is set
+                        // FIX: Cast to any to resolve missing DOM types.
+                        (videoRef.current as any).play().then(() => setIsPlaying(true)).catch((e: any) => console.log("Autoplay blocked", e));
                         setHasStream(true);
                     }
                     if (ambilightRef.current) {
-                        ambilightRef.current.srcObject = stream;
-                        ambilightRef.current.play().catch(() => {});
+                        // FIX: Cast to any to resolve missing DOM types.
+                        (ambilightRef.current as any).srcObject = stream;
+                        // FIX: Cast to any to resolve missing DOM types.
+                        (ambilightRef.current as any).play().catch(() => {});
                     }
                 });
 
@@ -307,8 +329,10 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                         if (msg.type === 'stream_stopped') {
                             setHasStream(false);
                             setIsPlaying(false);
-                            if (videoRef.current) videoRef.current.srcObject = null;
-                            if (ambilightRef.current) ambilightRef.current.srcObject = null;
+                            // FIX: Cast to any to resolve missing DOM types.
+                            if (videoRef.current) (videoRef.current as any).srcObject = null;
+                            // FIX: Cast to any to resolve missing DOM types.
+                            if (ambilightRef.current) (ambilightRef.current as any).srcObject = null;
                             lastStatsRef.current = null;
                             setMovieTitle("");
                             setCurrentSubtitleText("");
@@ -392,7 +416,8 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
 
                                   setStats(prev => ({
                                       ...prev,
-                                      resolution: `${videoRef.current?.videoWidth}x${videoRef.current?.videoHeight}`,
+                                      // FIX: Cast to any to resolve missing DOM types.
+                                      resolution: `${(videoRef.current as any)?.videoWidth}x${(videoRef.current as any)?.videoHeight}`,
                                       fps: report.framesPerSecond || 0,
                                       packetLoss: report.packetsLost ? `${report.packetsLost}` : '0'
                                   }));
@@ -421,9 +446,12 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
     const elem = containerRef.current;
     const videoElem = videoRef.current as any;
 
-    if (!document.fullscreenElement && !((document as any).webkitFullscreenElement)) {
-        if (elem?.requestFullscreen) {
-            elem.requestFullscreen().catch(err => {
+    // FIX: Cast to any to resolve missing DOM types.
+    if (!(window as any).document.fullscreenElement && !((window as any).document as any).webkitFullscreenElement) {
+        // FIX: Cast to any to resolve missing DOM types.
+        if ((elem as any)?.requestFullscreen) {
+            // FIX: Cast to any to resolve missing DOM types.
+            (elem as any).requestFullscreen().catch((err: any) => {
                if (videoElem && videoElem.webkitEnterFullscreen) {
                    videoElem.webkitEnterFullscreen();
                }
@@ -433,17 +461,21 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
             videoElem.webkitEnterFullscreen();
         }
     } else {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if ((document as any).webkitExitFullscreen) {
-            (document as any).webkitExitFullscreen();
+        // FIX: Cast to any to resolve missing DOM types.
+        if ((window as any).document.exitFullscreen) {
+            // FIX: Cast to any to resolve missing DOM types.
+            (window as any).document.exitFullscreen();
+        } else if (((window as any).document as any).webkitExitFullscreen) {
+            // FIX: Cast to any to resolve missing DOM types.
+            ((window as any).document as any).webkitExitFullscreen();
         }
     }
   };
 
   const toggleTheaterMode = () => {
     if (isFullscreen) {
-      document.exitFullscreen();
+      // FIX: Cast to any to resolve missing DOM types.
+      (window as any).document.exitFullscreen();
     } else {
       setIsTheaterMode(!isTheaterMode);
     }
@@ -451,10 +483,14 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
 
   const togglePiP = async () => {
     try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else if (videoRef.current && videoRef.current !== document.pictureInPictureElement) {
-        await videoRef.current.requestPictureInPicture();
+      // FIX: Cast to any to resolve missing DOM types.
+      if ((window as any).document.pictureInPictureElement) {
+        // FIX: Cast to any to resolve missing DOM types.
+        await (window as any).document.exitPictureInPicture();
+        // FIX: Cast to any to resolve missing DOM types.
+      } else if (videoRef.current && videoRef.current !== (window as any).document.pictureInPictureElement) {
+        // FIX: Cast to any to resolve missing DOM types.
+        await (videoRef.current as any).requestPictureInPicture();
       }
     } catch (err) {
       console.error("PiP failed", err);
@@ -463,17 +499,21 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
 
   const togglePlay = () => {
       if (videoRef.current) {
-          if (videoRef.current.paused) {
-              videoRef.current.play().catch(console.error);
+          // FIX: Cast to any to resolve missing DOM types.
+          if ((videoRef.current as any).paused) {
+              // FIX: Cast to any to resolve missing DOM types.
+              (videoRef.current as any).play().catch(console.error);
           } else {
-              videoRef.current.pause();
+              // FIX: Cast to any to resolve missing DOM types.
+              (videoRef.current as any).pause();
           }
       }
   };
 
   useEffect(() => {
     const handleFsChange = () => {
-        const isFs = !!document.fullscreenElement || !!(document as any).webkitFullscreenElement;
+        // FIX: Cast to any to resolve missing DOM types.
+        const isFs = !!(window as any).document.fullscreenElement || !!((window as any).document as any).webkitFullscreenElement;
         setIsFullscreen(isFs);
         if (!isFs) {
             setIsTheaterMode(false);
@@ -483,27 +523,37 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
     const handleWebkitEnd = () => {
         setIsFullscreen(false);
         setIsTheaterMode(false);
-        if (videoRef.current && !videoRef.current.ended) {
-            videoRef.current.play().catch(e => console.log("Resume failed:", e));
+        // FIX: Cast to any to resolve missing DOM types.
+        if (videoRef.current && !(videoRef.current as any).ended) {
+            // FIX: Cast to any to resolve missing DOM types.
+            (videoRef.current as any).play().catch((e: any) => console.log("Resume failed:", e));
         }
     };
     const handleWebkitBegin = () => setIsFullscreen(true);
 
-    document.addEventListener('fullscreenchange', handleFsChange);
-    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    // FIX: Cast to any to resolve missing DOM types.
+    (window as any).document.addEventListener('fullscreenchange', handleFsChange);
+    // FIX: Cast to any to resolve missing DOM types.
+    (window as any).document.addEventListener('webkitfullscreenchange', handleFsChange);
     
     const videoEl = videoRef.current;
     if (videoEl) {
-        videoEl.addEventListener('webkitendfullscreen', handleWebkitEnd);
-        videoEl.addEventListener('webkitbeginfullscreen', handleWebkitBegin);
+        // FIX: Cast to any to resolve missing DOM types.
+        (videoEl as any).addEventListener('webkitendfullscreen', handleWebkitEnd);
+        // FIX: Cast to any to resolve missing DOM types.
+        (videoEl as any).addEventListener('webkitbeginfullscreen', handleWebkitBegin);
     }
 
     return () => {
-        document.removeEventListener('fullscreenchange', handleFsChange);
-        document.removeEventListener('webkitfullscreenchange', handleFsChange);
+        // FIX: Cast to any to resolve missing DOM types.
+        (window as any).document.removeEventListener('fullscreenchange', handleFsChange);
+        // FIX: Cast to any to resolve missing DOM types.
+        (window as any).document.removeEventListener('webkitfullscreenchange', handleFsChange);
         if (videoEl) {
-            videoEl.removeEventListener('webkitendfullscreen', handleWebkitEnd);
-            videoEl.removeEventListener('webkitbeginfullscreen', handleWebkitBegin);
+            // FIX: Cast to any to resolve missing DOM types.
+            (videoEl as any).removeEventListener('webkitendfullscreen', handleWebkitEnd);
+            // FIX: Cast to any to resolve missing DOM types.
+            (videoEl as any).removeEventListener('webkitbeginfullscreen', handleWebkitBegin);
         }
     };
   }, [hasStream]);
@@ -542,27 +592,34 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
   // Escape key for Theater Mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isTheaterMode) {
+      // FIX: Cast to any to resolve missing DOM types.
+      if ((e as any).key === 'Escape' && isTheaterMode) {
         setIsTheaterMode(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    // FIX: Cast to any to resolve missing DOM types.
+    (window as any).addEventListener('keydown', handleKeyDown);
+    // FIX: Cast to any to resolve missing DOM types.
+    return () => (window as any).removeEventListener('keydown', handleKeyDown);
   }, [isTheaterMode]);
 
   // Auto-wake chat
   useEffect(() => {
       const handleGlobalKeyDown = (e: KeyboardEvent) => {
           resetInputIdleTimer();
+          // FIX: Cast to any to resolve missing DOM types.
           if ((isTheaterMode || isFullscreen) && !isInputFocused) {
-              if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              // FIX: Cast to any to resolve missing DOM types.
+              if ((e as any).key.length === 1 && !(e as any).ctrlKey && !(e as any).metaKey && !(e as any).altKey) {
                   setShowControls(true);
                   chatRef.current?.focusInput();
               }
           }
       };
-      window.addEventListener('keydown', handleGlobalKeyDown);
-      return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+      // FIX: Cast to any to resolve missing DOM types.
+      (window as any).addEventListener('keydown', handleGlobalKeyDown);
+      // FIX: Cast to any to resolve missing DOM types.
+      return () => (window as any).removeEventListener('keydown', handleGlobalKeyDown);
   }, [isTheaterMode, isFullscreen, isInputFocused]);
 
   useEffect(() => {
@@ -577,13 +634,15 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
       });
 
       window.electron.onGuestError((err) => {
-          alert("Connection Error: " + err);
+          // FIX: Cast to any to resolve missing DOM types.
+          (window as any).alert("Connection Error: " + err);
           setIsConnecting(false);
           setIsConnected(false);
       });
 
       window.electron.onGuestDisconnected(() => {
-          alert("Disconnected from Host");
+          // FIX: Cast to any to resolve missing DOM types.
+          (window as any).alert("Disconnected from Host");
           setIsConnected(false);
           setHasStream(false);
           if (peerRef.current) peerRef.current.destroy();
@@ -647,7 +706,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
            <div className="space-y-6">
              <div>
                 <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Host IP Address</label>
-                <input type="text" value={hostIpInput} onChange={(e) => setHostIpInput(e.target.value)} placeholder="100.x.x.x" className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50" />
+                <input type="text" value={hostIpInput} onChange={(e) => setHostIpInput((e.target as any).value)} placeholder="100.x.x.x" className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50" />
              </div>
              <Button className="w-full py-4" size="lg" onClick={connectToHost} isLoading={isConnecting} disabled={!hostIpInput}>{isConnecting ? 'CONNECTING...' : 'JOIN'}</Button>
              {!electronAvailable && <p className="text-blue-400 text-xs text-center mt-2">Running in Web Mode</p>}
@@ -875,7 +934,7 @@ export const ViewerRoom: React.FC<ViewerRoomProps> = ({ onBack }) => {
                     <div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 flex items-center">
                         <input 
                             type="range" min="0" max="1" step="0.05" 
-                            value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))}
+                            value={volume} onChange={(e) => setVolume(parseFloat((e.target as any).value))}
                             className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer transition-colors bg-white/20 hover:bg-white/30 ${activeTheme.accent} ${activeTheme.primary} [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-current [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:bg-current`}
                         />
                     </div>
